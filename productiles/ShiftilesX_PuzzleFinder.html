@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Rush Hour Products Architect v3.0</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; background-color: #f1f5f9; display: flex; font-family: 'Outfit', sans-serif; height: 100vh; overflow: hidden; color: #1e293b; }
+        #sidebar { width: 320px; background: white; border-right: 1px solid #e2e8f0; padding: 20px; display: flex; flex-direction: column; gap: 15px; box-shadow: 4px 0 15px rgba(0,0,0,0.03); z-index: 10; overflow-y: auto; }
+        h2 { margin: 0; font-weight: 300; letter-spacing: 0.1em; text-transform: uppercase; font-size: 1rem; color: #64748b; }
+        .control-group { display: flex; flex-direction: column; gap: 5px; }
+        label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+        input { padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px; font-family: 'Outfit'; font-size: 13px; background: #f8fafc; }
+        .small-input { padding: 4px 6px; font-size: 12px; width: 70px; }
+        .slider-row { display: flex; justify-content: space-between; align-items: center; }
+        .val-badge { background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+        button { padding: 12px; font-weight: 600; cursor: pointer; border: none; border-radius: 6px; transition: 0.2s; text-transform: uppercase; letter-spacing: 1px; font-size: 12px; }
+        #genBtn { background: #3b82f6; color: white; }
+        #genBtn:hover { background: #2563eb; }
+        #copyBtn { background: #0f172a; color: white; display: none; }
+        #resetBtn { background: #94a3b8; color: white; display: none; }
+        #ledger { flex-grow: 1; margin-top: 10px; font-family: 'Courier New', monospace; font-size: 10px; background: #f8fafc; color: #334155; padding: 10px; border-radius: 6px; overflow-y: auto; border: 1px solid #e2e8f0; white-space: pre-wrap; word-break: break-all; }
+        #main { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f8fafc; }
+        #status-bar { margin-bottom: 20px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 2px; }
+        canvas { background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.04); cursor: grab; }
+        canvas:active { cursor: grabbing; }
+        .error-msg { color: #ef4444; font-size: 11px; font-weight: 600; margin-top: 5px; display: none; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h2>Product Architect</h2>
+
+    <div class="control-group">
+        <div class="slider-row"><label>Grid Size</label><span class="val-badge" id="sizeVal">4</span></div>
+        <input type="range" id="gridSize" min="3" max="6" value="4">
+    </div>
+
+    <div class="control-group">
+        <label id="poolLabel">Number Pool (Need 8)</label>
+        <input type="text" id="numInput" value="2,3,4,5,2,4,3,5">
+        <div id="poolError" class="error-msg">Incorrect number of factors!</div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:end;">
+        <div class="control-group"><label>H-Dominos</label><input class="small-input" type="number" id="hCount" value="1"></div>
+        <div class="control-group"><label>V-Dominos</label><input class="small-input" type="number" id="vCount" value="1"></div>
+        <div class="control-group"><label>H-1×3</label><input class="small-input" type="number" id="h3Count" value="0"></div>
+        <div class="control-group"><label>V-1×3</label><input class="small-input" type="number" id="v3Count" value="0"></div>
+        <div class="control-group"><label>2×2 Tiles</label><input class="small-input" type="number" id="sq2Count" value="1"></div>
+    </div>
+
+    <div class="control-group">
+        <div class="slider-row"><label>Scramble Moves</label><span class="val-badge" id="moveVal">100</span></div>
+        <input type="range" id="moves" min="5" max="300" value="100">
+    </div>
+
+    <button id="genBtn">Generate Product Puzzle</button>
+    <button id="resetBtn">Reset to Scramble</button>
+    <button id="copyBtn">Copy Compact JSON</button>
+    <div id="ledger">// Output...</div>
+</div>
+
+<div id="main">
+    <div id="status-bar">Every Row/Col needs 2 factors</div>
+    <canvas id="gameCanvas"></canvas>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let GRID_SIZE = 80, GUTTER = 60, SNAP_SPEED = 0.25;
+let p = null, originalScramble = null;
+let drag = { active: null, axis: null, lastX: 0, lastY: 0 };
+
+const getEl = id => document.getElementById(id);
+const sync = (slider, display) => {
+    getEl(slider).oninput = (e) => {
+        getEl(display).innerText = e.target.value;
+        updatePoolLabel();
+    };
+};
+sync('gridSize', 'sizeVal');
+sync('moves', 'moveVal');
+
+function updatePoolLabel() {
+    const s = parseInt(getEl('gridSize').value);
+    getEl('poolLabel').innerText = `Number Pool (Need ${s*2})`;
+}
+updatePoolLabel();
+
+function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
+
+// 1. Solve the 2-per-line constraint
+function getTwoPerLinePattern(size) {
+    let attempts = 0;
+    while(attempts++ < 500) {
+        let grid = Array.from({length: size}, () => Array(size).fill(0));
+        let rowCounts = Array(size).fill(0);
+        let colCounts = Array(size).fill(0);
+        
+        // Greedy placement with backtracking/restart logic
+        let success = true;
+        for(let r=0; r<size; r++) {
+            let possibleCols = [];
+            for(let c=0; c<size; c++) if(colCounts[c] < 2) possibleCols.push(c);
+            
+            if(possibleCols.length < 2) { success = false; break; }
+            shuffleArray(possibleCols);
+            
+            let c1 = possibleCols[0];
+            let c2 = possibleCols[1];
+            
+            grid[r][c1] = 1;
+            grid[r][c2] = 1;
+            colCounts[c1]++;
+            colCounts[c2]++;
+        }
+        
+        // Verify all columns have exactly 2
+        if(success && colCounts.every(v => v === 2)) return grid;
+    }
+    return null;
+}
+
+function getAllowedDirs(tile) {
+    if (tile.w === tile.h) return [{dr:0,dc:1},{dr:0,dc:-1},{dr:1,dc:0},{dr:-1,dc:0}];
+    if (tile.w > tile.h) return [{dr:0,dc:1},{dr:0,dc:-1}];
+    return [{dr:1,dc:0},{dr:-1,dc:0}];
+}
+
+function hasAtLeastOneMove(puzzle) {
+    for (let t of puzzle.tiles) {
+        const canMoveOne = getAllowedDirs(t).some(d => canStep(puzzle, t, d.dr, d.dc));
+        if (!canMoveOne) return false;
+    }
+    return true;
+}
+
+function scrambleDistanceFrom(tiles, referenceTiles) {
+    let total = 0;
+    for (let i=0;i<tiles.length;i++) {
+        total += Math.abs(tiles[i].r - referenceTiles[i].r) + Math.abs(tiles[i].c - referenceTiles[i].c);
+    }
+    return total;
+}
+
+function movedTileCountFrom(tiles, referenceTiles) {
+    let count = 0;
+    for (let i=0;i<tiles.length;i++) {
+        if (tiles[i].r !== referenceTiles[i].r || tiles[i].c !== referenceTiles[i].c) count++;
+    }
+    return count;
+}
+
+function isNonTrivialScramble(puzzle, solvedTiles) {
+    const moved = movedTileCountFrom(puzzle.tiles, solvedTiles);
+    const dist = scrambleDistanceFrom(puzzle.tiles, solvedTiles);
+    return moved >= Math.min(2, puzzle.tiles.length) && dist >= 3;
+}
+
+function generate() {
+    const size = parseInt(getEl('gridSize').value);
+    const nums = getEl('numInput').value.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+    const targetCount = size * 2;
+
+    if (nums.length !== targetCount) {
+        getEl('poolError').style.display = 'block';
+        return;
+    }
+    getEl('poolError').style.display = 'none';
+
+    const pattern = getTwoPerLinePattern(size);
+    if (!pattern) {
+        alert("Pattern Generation Error. Try again.");
+        return;
+    }
+
+    shuffleArray(nums);
+    let numGrid = Array.from({length: size}, () => Array(size).fill(0));
+    let k = 0;
+    for(let r=0; r<size; r++){
+        for(let c=0; c<size; c++){
+            if(pattern[r][c]) numGrid[r][c] = nums[k++];
+        }
+    }
+
+    let rowProds = Array(size).fill(1);
+    let colProds = Array(size).fill(1);
+    for(let r=0;r<size;r++){
+        for(let c=0;c<size;c++){
+            if(numGrid[r][c]){
+                rowProds[r] *= numGrid[r][c];
+                colProds[c] *= numGrid[r][c];
+            }
+        }
+    }
+
+    let tiles=[];
+    let tileGrid=Array.from({length:size},()=>Array(size).fill(null));
+
+    const tryPlaceTile=(w,h)=>{
+        let spots=[];
+        for(let r=0;r<=size-h;r++){
+            for(let c=0;c<=size-w;c++){
+                let clear=true;
+                for(let rr=0;rr<h;rr++){
+                    for(let cc=0;cc<w;cc++) if(tileGrid[r+rr][c+cc]) clear=false;
+                }
+                if(clear) spots.push({r,c});
+            }
+        }
+        if(!spots.length) return false;
+        let s=spots[Math.floor(Math.random()*spots.length)];
+        let vals=[];
+        for(let rr=0;rr<h;rr++){
+            for(let cc=0;cc<w;cc++) vals.push(numGrid[s.r+rr][s.c+cc]);
+        }
+        let t={id:tiles.length+1,r:s.r,c:s.c,w,h,vals};
+        tiles.push(t);
+        for(let rr=0;rr<h;rr++){
+            for(let cc=0;cc<w;cc++) tileGrid[s.r+rr][s.c+cc]=t;
+        }
+        return true;
+    };
+
+    const cfg={
+        sq2:+getEl('sq2Count').value,
+        h3:+getEl('h3Count').value,
+        v3:+getEl('v3Count').value,
+        hC:+getEl('hCount').value,
+        vC:+getEl('vCount').value
+    };
+
+    for(let i=0;i<cfg.sq2;i++) tryPlaceTile(2,2);
+    for(let i=0;i<cfg.h3;i++) tryPlaceTile(3,1);
+    for(let i=0;i<cfg.v3;i++) tryPlaceTile(1,3);
+    for(let i=0;i<cfg.hC;i++) tryPlaceTile(2,1);
+    for(let i=0;i<cfg.vC;i++) tryPlaceTile(1,2);
+
+    for(let r=0;r<size;r++){
+        for(let c=0;c<size;c++){
+            if(numGrid[r][c]!==0 && !tileGrid[r][c]){
+                let t={id:tiles.length+1,r,c,w:1,h:1,vals:[numGrid[r][c]]};
+                tiles.push(t);
+                tileGrid[r][c]=t;
+            }
+        }
+    }
+
+    p={size,tiles,targets:{rows:rowProds,cols:colProds}};
+
+    if(!hasAtLeastOneMove(p)){
+        generate();
+        return;
+    }
+
+    const solvedTiles=JSON.parse(JSON.stringify(p.tiles));
+
+    scramblePuzzle(p,solvedTiles);
+
+    if(!isNonTrivialScramble(p,solvedTiles)){
+        generate();
+        return;
+    }
+
+    originalScramble=JSON.parse(JSON.stringify(p.tiles));
+    initInteractivity();
+    updateUI();
+}
+
+function scramblePuzzle(puzzle, solvedTiles=null) {
+    const moveLimit = +getEl('moves').value;
+    let movesMade = 0;
+    let lastTile=null;
+    let reverseDir=null;
+
+    for(let safety=0;safety<moveLimit*20 && movesMade<moveLimit;safety++){
+        let tile=puzzle.tiles[Math.floor(Math.random()*puzzle.tiles.length)];
+        let dirs=[...getAllowedDirs(tile)];
+
+        if(lastTile===tile.id && reverseDir){
+            dirs=dirs.filter(d=>!(d.dr===reverseDir.dr && d.dc===reverseDir.dc));
+            if(!dirs.length) dirs=[...getAllowedDirs(tile)];
+        }
+
+        let d=dirs[Math.floor(Math.random()*dirs.length)];
+
+        if(canStep(puzzle,tile,d.dr,d.dc)){
+            tile.r+=d.dr;
+            tile.c+=d.dc;
+            movesMade++;
+            lastTile=tile.id;
+            reverseDir={dr:-d.dr,dc:-d.dc};
+        }
+    }
+
+    if(solvedTiles && !isNonTrivialScramble(puzzle,solvedTiles)){
+        let safety=0;
+        while(!isNonTrivialScramble(puzzle,solvedTiles) && safety<moveLimit*20){
+            safety++;
+            let tile=puzzle.tiles[Math.floor(Math.random()*puzzle.tiles.length)];
+            let dirs=shuffleArray([...getAllowedDirs(tile)]);
+            for(let d of dirs){
+                if(canStep(puzzle,tile,d.dr,d.dc)){
+                    tile.r+=d.dr;
+                    tile.c+=d.dc;
+                    break;
+                }
+            }
+        }
+    }
+}
+
+function canStep(puzzle, t, dr, dc) {
+    let nr = t.r + dr, nc = t.c + dc;
+    if (nr < 0 || nc < 0 || nr + t.h > puzzle.size || nc + t.w > puzzle.size) return false;
+    return !puzzle.tiles.some(o => {
+        if (o.id === t.id) return false;
+        return !(nc + t.w <= o.c || nc >= o.c + o.w || nr + t.h <= o.r || nr >= o.r + o.h);
+    });
+}
+
+function initInteractivity() {
+    p.tiles.forEach(t => {
+        t.x = t.c * GRID_SIZE + (t.w * GRID_SIZE) / 2;
+        t.y = t.r * GRID_SIZE + (t.h * GRID_SIZE) / 2;
+    });
+}
+
+// Reuse logic for sliding from previous version (Collision physics)
+function getBounds(t, pxX, pxY) {
+    return { l: pxX - (t.w * GRID_SIZE)/2, r: pxX + (t.w * GRID_SIZE)/2, t: pxY - (t.h * GRID_SIZE)/2, b: pxY + (t.h * GRID_SIZE)/2 };
+}
+function overlap(r1, r2) { const m = 0.5; return !(r1.r <= r2.l + m || r1.l >= r2.r - m || r1.b <= r2.t + m || r1.t >= r2.b - m); }
+
+function testMove(t, axis, dist, visited) {
+    if (visited.has(t.id)) return true;
+    visited.add(t.id);
+    if (t.w > t.h && axis === 'v') return false;
+    if (t.h > t.w && axis === 'h') return false;
+    const nX = t.x + (axis === 'h' ? dist : 0), nY = t.y + (axis === 'v' ? dist : 0);
+    const b = getBounds(t, nX, nY), lim = p.size * GRID_SIZE;
+    if (b.l < -0.1 || b.r > lim + 0.1 || b.t < -0.1 || b.b > lim + 0.1) return false;
+    for (let o of p.tiles) {
+        if (!visited.has(o.id) && overlap(b, getBounds(o, o.x, o.y))) {
+            if (!testMove(o, axis, dist, visited)) return false;
+        }
+    }
+    return true;
+}
+
+function executeMove(t, axis, dist, visited) {
+    if (visited.has(t.id)) return;
+    visited.add(t.id);
+    const b = getBounds(t, t.x + (axis === 'h' ? dist : 0), t.y + (axis === 'v' ? dist : 0));
+    for (let o of p.tiles) {
+        if (!visited.has(o.id) && overlap(b, getBounds(o, o.x, o.y))) executeMove(o, axis, dist, visited);
+    }
+    if (axis === 'h') t.x += dist; else t.y += dist;
+}
+
+canvas.onmousedown = (e) => {
+    if (!p) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left - GUTTER, my = e.clientY - rect.top - GUTTER;
+    const hit = p.tiles.find(t => { const b = getBounds(t, t.x, t.y); return mx > b.l && mx < b.r && my > b.t && my < b.b; });
+    if (hit) { drag.active = hit; drag.lastX = mx; drag.lastY = my; drag.axis = null; }
+};
+
+window.onmousemove = (e) => {
+    if (!drag.active) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left - GUTTER, my = e.clientY - rect.top - GUTTER;
+    if (!drag.axis) {
+        const dx = Math.abs(mx - drag.lastX), dy = Math.abs(my - drag.lastY);
+        if (dx > 5 || dy > 5) drag.axis = dx > dy ? 'h' : 'v'; else return;
+    }
+    const delta = (drag.axis === 'h' ? mx - drag.lastX : my - drag.lastY);
+    const steps = Math.abs(Math.round(delta)), dir = Math.sign(delta);
+    for (let i = 0; i < steps; i++) {
+        if (testMove(drag.active, drag.axis, dir, new Set())) executeMove(drag.active, drag.axis, dir, new Set());
+        else break;
+    }
+    if (drag.axis === 'h') drag.lastX = mx; else drag.lastY = my;
+};
+
+window.onmouseup = () => {
+    if (drag.active) {
+        p.tiles.forEach(t => {
+            t.c = Math.round((t.x - (t.w * GRID_SIZE) / 2) / GRID_SIZE);
+            t.r = Math.round((t.y - (t.h * GRID_SIZE) / 2) / GRID_SIZE);
+        });
+    }
+    drag.active = null;
+};
+
+function updateUI() {
+    getEl('copyBtn').style.display = 'block';
+    getEl('resetBtn').style.display = 'block';
+    const compactTiles = p.tiles.map(t => [t.r, t.c, t.w, t.h, ...t.vals]);
+    const data = { s: p.size, t: p.targets, b: compactTiles };
+    getEl('ledger').innerText = JSON.stringify(data) + ",";
+    getEl('copyBtn').onclick = () => {
+        navigator.clipboard.writeText(JSON.stringify(data));
+        getEl('copyBtn').innerText = 'Copied!';
+        setTimeout(() => getEl('copyBtn').innerText = 'Copy Compact JSON', 1000);
+    };
+}
+
+getEl('resetBtn').onclick = () => {
+    p.tiles.forEach((t, i) => {
+        t.r = originalScramble[i].r; t.c = originalScramble[i].c;
+        t.x = t.c * GRID_SIZE + (t.w * GRID_SIZE) / 2; t.y = t.r * GRID_SIZE + (t.h * GRID_SIZE) / 2;
+    });
+};
+
+function tileColor(t) {
+    if (t.w === 2 && t.h === 2) return '#1e3a8a';
+    if (t.w === 3 || t.h === 3) return '#b91c1c';
+    if (t.w === 2 || t.h === 2) return '#0369a1';
+    return '#64748b';
+}
+
+function draw() {
+    if (!p) { requestAnimationFrame(draw); return; }
+    canvas.width = (p.size * GRID_SIZE) + GUTTER + 20;
+    canvas.height = (p.size * GRID_SIZE) + GUTTER + 20;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(GUTTER, GUTTER);
+
+    for (let i = 0; i < p.size; i++) {
+        ctx.fillStyle = '#64748b'; ctx.font = '700 13px Outfit'; ctx.textAlign = 'center';
+        ctx.fillText(p.targets.rows[i], -30, i * GRID_SIZE + GRID_SIZE / 2);
+        ctx.fillText(p.targets.cols[i], i * GRID_SIZE + GRID_SIZE / 2, -25);
+        ctx.strokeStyle = '#e2e8f0';
+        for (let j = 0; j <= p.size; j++) {
+            ctx.beginPath(); ctx.moveTo(j * GRID_SIZE, 0); ctx.lineTo(j * GRID_SIZE, p.size * GRID_SIZE); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, j * GRID_SIZE); ctx.lineTo(p.size * GRID_SIZE, j * GRID_SIZE); ctx.stroke();
+        }
+    }
+
+    p.tiles.forEach(t => {
+        if (!drag.active) {
+            t.x += (t.c * GRID_SIZE + (t.w * GRID_SIZE) / 2 - t.x) * SNAP_SPEED;
+            t.y += (t.r * GRID_SIZE + (t.h * GRID_SIZE) / 2 - t.y) * SNAP_SPEED;
+        }
+        ctx.fillStyle = tileColor(t);
+        ctx.beginPath();
+        ctx.roundRect(t.x - (t.w * GRID_SIZE - 6) / 2, t.y - (t.h * GRID_SIZE - 6) / 2, t.w * GRID_SIZE - 6, t.h * GRID_SIZE - 6, 12);
+        ctx.fill();
+
+        ctx.fillStyle = 'white'; ctx.font = '600 22px Outfit';
+        for (let rr = 0; rr < t.h; rr++) {
+            for (let cc = 0; cc < t.w; cc++) {
+                const v = t.vals[rr * t.w + cc];
+                if (v && v !== 0) {
+                    const lx = t.x + (cc - (t.w - 1) / 2) * GRID_SIZE;
+                    const ly = t.y + (rr - (t.h - 1) / 2) * GRID_SIZE;
+                    ctx.fillText(v, lx, ly + 2);
+                }
+            }
+        }
+    });
+    ctx.restore();
+    requestAnimationFrame(draw);
+}
+
+getEl('genBtn').onclick = generate;
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Factorfall</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            margin: 0; background-color: #ffffff; display: flex; flex-direction: column; 
+            align-items: center; font-family: 'Outfit', sans-serif; 
+            color: #333; padding-top: 20px; 
+        }
+
+        #header { width: 350px; display: flex; flex-direction: column; align-items: center; margin-bottom: 1rem; position: relative; }
+        h1 { margin: 0; font-weight: 300; letter-spacing: 0.25em; text-transform: uppercase; color: #444; font-size: 24px; }
+
+        #help-toggle {
+            position: absolute; right: -40px; top: 0;
+            width: 28px; height: 28px; border-radius: 50%;
+            border: 1.5px solid #ccc; display: flex; align-items: center;
+            justify-content: center; cursor: pointer; color: #999;
+            font-weight: 600; font-size: 16px; transition: all 0.2s;
+            z-index: 20;
+        }
+        #help-toggle:hover { border-color: #333; color: #333; }
+
+        #stats { 
+            width: 100%; 
+            display: flex; 
+            align-items: flex-end; 
+            justify-content: space-between; 
+            margin-top: 1.5rem; 
+            padding: 0 10px;
+        }
+
+        /* Add a fixed width to the side items to force the middle to center */
+        .stat-item { 
+            width: 100px; /* Adjust this value if your text clips */
+            flex-shrink: 0;
+        }
+
+        .stat-label { text-transform: uppercase; letter-spacing: 0.1em; color: #999; font-size: 10px; font-weight: 600; margin-bottom: 4px; }
+        .val { display: block; font-size: 24px; font-weight: 300; color: #333; }
+        
+        /* Stylized Puzzle Counter to match Scurry */
+        #puzzle-label-small { font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; color: #9ca3af; font-weight: 700; margin-bottom: 2px; display: block; line-height: 1; }
+        #level-nav { display: flex; align-items: center; gap: 10px; }
+        
+        #target-display { text-align: center; border: 1.5px solid #333; border-radius: 4px; padding: 8px 20px; }
+        .target-val { font-size: 28px; font-weight: 600; color: #333; }
+
+        .nav-arrow {
+            cursor: pointer; background: none !important; border: none !important;
+            padding: 5px !important; font-size: 20px; color: #999;
+            transition: color 0.2s; width: auto !important; margin: 0; line-height: 1;
+        }
+        .nav-arrow:hover:not(:disabled) { color: #333; }
+        .nav-arrow:disabled { color: #eee; cursor: default; }
+
+        #queue-container { display: flex; gap: 5px; margin-top: 1rem; height: 60px; align-items: center; justify-content: center; }
+        .queue-ball { 
+            width: 32px; height: 32px; border-radius: 50%; display: flex; 
+            align-items: center; justify-content: center; color: white; 
+            font-weight: 600; font-size: 12px; transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .queue-ball.next { transform: scale(1.3); border: 2px solid #333; }
+
+        #canvas-wrapper { position: relative; background: white; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); border-radius: 2px; }
+        canvas { background: #fff; border: 1px solid #e2e2e2; cursor: crosshair; display: block; }
+
+        /* Game Controls (Undo/Reset) */
+        .game-controls { display: flex; gap: 10px; width: 380px; margin-top: 15px; }
+        .control-btn { 
+            flex: 1; padding: 10px !important; font-size: 10px !important; 
+            color: #666 !important; border: 1px solid #ddd !important;
+            background: white; text-transform: uppercase; font-weight: 600; 
+            letter-spacing: 0.1em; cursor: pointer; transition: all 0.2s;
+        }
+        .control-btn:hover:not(:disabled) { background: #f9f9f9; border-color: #999 !important; color: #333 !important; }
+        .control-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        /* Skip Tutorial Styles */
+        #skip-tutorial-container { display:none; }
+        .skip-link { font-size: 10px; text-decoration: underline; color: #9ca3af; cursor: pointer; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; }
+        .skip-link:hover { color: #333; }
+
+        #overlay, #instructions-overlay { 
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(255,255,255,0.98); 
+            display: none; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: flex-start;
+            z-index: 9999; 
+            backdrop-filter: blur(8px); 
+            padding: 40px 20px; 
+            overflow-y: auto;
+        }
+
+        .instr-content {
+            max-width: 400px;
+            text-align: left;
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .close-x { 
+            position: absolute; 
+            top: -20px; 
+            right: -20px; 
+            font-size: 24px; 
+            cursor: pointer; 
+            color: #999; 
+            font-weight: 300; 
+            padding: 10px; 
+        }
+        .close-x:hover { color: #333; }
+
+        
+        .instr-content h2 { font-weight: 300; letter-spacing: 0.1em; text-align: center; margin-top: 0; }
+        .instr-content p { font-size: 13px; line-height: 1.5; color: #555; }
+        .instr-section { margin-bottom: 20px; }
+        .instr-label { font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; display: block; }
+        
+        .diagram-row { display: flex; gap: 15px; justify-content: center; margin: 10px 0; }
+        .diagram-box { text-align: center; font-size: 10px; color: #888; }
+        canvas.mini-diag { 
+            background: transparent; /* Changed from #f9f9f9 */
+            border: none;            /* Removed the 1px solid #eee */
+            border-radius: 0; 
+        }
+
+        button { 
+            padding: 12px 25px; border: 1.5px solid #333; 
+            background: white; font-family: 'Outfit', sans-serif; font-size: 11px;
+            font-weight: 600; letter-spacing: 0.1em; cursor: pointer; 
+            text-transform: uppercase; transition: all 0.2s ease;
+            width: 100%;
+        }
+        button:hover { background: #333; color: white; }
+        button.primary { background: #333; color: white; }
+        .btn-group { display: flex; flex-direction: column; gap: 8px; width: 220px; align-items: center; }
+    </style>
+</head>
+<body>
+
+<div id="header">
+    <h1>Factorfall</h1>
+    <div id="help-toggle" onclick="toggleInstructions(true)">?</div>
+    <div id="stats">
+        <div class="stat-item">
+            <div class="stat-label">Score</div>
+            <span class="val" id="scoreDisp">0</span>
+        </div>
+        <div id="target-display">
+            <div class="stat-label" style="color: #666">Target</div>
+            <span class="target-val" id="targetVal">--</span>
+        </div>
+        <div class="stat-item" style="text-align: right">
+            <span id="puzzle-label-small">Puzzle</span>
+            <div id="level-nav">
+                <button class="nav-arrow" id="prevLevel" onclick="changeLevel(-1)">&#8592;</button>
+                <span class="val" id="levelDisp">1</span>
+                <button class="nav-arrow" id="nextLevel" onclick="changeLevel(1)">&#8594;</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="queue-container"></div>
+</div>
+
+<div id="canvas-wrapper">
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="overlay">
+        <h2 id="statusTitle">PUZZLE COMPLETED</h2>
+        <p id="statusMsg">Great job!</p>
+        <div class="btn-group">
+            <button id="nextBtn" class="primary" onclick="loadNextPuzzle()">Next Puzzle</button>
+            <button id="retryBtn" onclick="resetPuzzle()">Retry Puzzle</button>
+            <button id="continueBtn" onclick="startEndless()">Free Play Mode</button>
+        </div>
+    </div>
+
+    <div id="instructions-overlay">
+        <div class="instr-content">
+            <div class="close-x" onclick="toggleInstructions(false)">✕</div>
+            <h2>How to Play</h2>
+            <p>Drop factors into the grid. Groups of the same color that <strong>multiply</strong> to the target are cleared from the board. Clear the entire board to solve the puzzle. </p>
+            
+            <div class="instr-section">
+                <span class="instr-label">Color & Connection</span>
+                <p>Only adjacent balls of the <strong>same color</strong> form groups. (Target: 24) </p>
+                <div class="diagram-row">
+                    <div class="diagram-box"><canvas id="diag1" class="mini-diag"></canvas><div>2x2x6=24 Stack</div></div>
+                    <div class="diagram-box"><canvas id="diag2" class="mini-diag"></canvas><div>3x8=24 Row</div></div>
+                    <div class="diagram-box"><canvas id="diag3" class="mini-diag"></canvas><div>4x1x2x3=24 Shape</div></div>
+                </div>
+            </div>
+
+            <div class="instr-section">
+                <span class="instr-label">Multi-Groups</span>
+                <p>One ball can be part of multiple groups.</p>
+                <div class="diagram-row">
+                    <div class="diagram-box"><canvas id="diag4" class="mini-diag"></canvas><div>2x2x2x3=24 and 3x8=24</div></div>
+                </div>
+            </div>
+        </div>
+        <div class="btn-group">
+            <button class="primary" onclick="startMainGame()">Play Game</button>
+            <button onclick="startTutorial()">Play Tutorial</button>
+        </div>
+    </div>
+</div>
+
+<div class="game-controls">
+    <button id="undoBtn" class="control-btn" onclick="undoMove()">Undo</button>
+    <button id="resetBtn" class="control-btn" onclick="resetPuzzle()">Reset</button>
+</div>
+
+<div class="game-controls" id="skip-btn-row" style="margin-top:8px;">
+    <button id="skipTutorialBtn" class="control-btn" onclick="startMainGame()">Skip Tutorial</button>
+</div>
+
+<script>
+    // SECTION: DATA & SETTINGS
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const COLS = 5, ROWS = 5, GRID_SIZE = 76, BALL_RADIUS = 28;
+    const COLORS = { RED: '#ff5f5f', BLUE: '#3273dc' };
+    const GRID_COLOR = '#e2e2e2', HIGHLIGHT_COLOR = '#ffecb3';
+    const GRAVITY = 1.8, TERMINAL_VEL = 32;
+    const ENDLESS_ROUND_SIZE = 7;
+
+    const TARGET_CONFIGS = {
+
+        "12": [1, 2, 2, 2, 3, 3, 4, 6], "18": [1, 3, 3, 3, 2, 2, 9, 6], "20": [1, 2, 2, 2, 5, 5, 4, 10], 
+        "28": [1, 2, 2, 2, 7, 7, 4, 14], "44": [1, 2, 2, 2, 11, 11, 4, 22], "45": [1, 3, 3, 3, 5, 5, 9, 15], 
+        "50": [1, 5, 5, 5, 2, 2, 25, 10], "63": [1, 3, 3, 3, 7, 7, 9, 21], "75": [1, 5, 5, 5, 3, 3, 25, 15],
+
+        "24": [1, 2, 2, 2, 3, 3, 4, 6, 8, 12], "40": [1, 2, 2, 2, 5, 5, 4, 10, 8, 20], "54": [1, 3, 3, 3, 2, 2, 9, 6, 27, 18], 
+        "56": [1, 2, 2, 2, 7, 7, 4, 14, 8, 28], "88": [1, 2, 2, 2, 11, 11, 4, 22, 8, 44],
+
+        "36": [1, 2, 2, 3, 3, 4, 9, 6], "100": [1, 2, 2, 5, 5, 4, 25, 10],
+        
+        "30": [1, 2, 2, 3, 3, 5, 5, 6, 15, 10], "42": [1, 2, 2, 3, 3, 7, 7, 6, 21, 14], "66": [1, 2, 2, 3, 3, 11, 11, 6, 33, 22], 
+        "70": [1, 2, 2, 5, 5, 7, 7, 10, 35, 14],
+
+        "60": [1, 2, 2, 3, 5, 4, 3, 5, 2, 6, 5, 2, 2, 15], "84": [1, 2, 2, 3, 7, 4, 3, 7, 2, 6, 7, 2, 2, 21], "90": [1, 3, 3, 2, 5, 9, 2, 5, 3, 6, 5, 3, 3, 10]
+    };
+
+        const puzzles = [
+            /* 1-5 Tutorial */
+            // one ball with cascade
+            { target: 18, board: [[], [{v:3, c:COLORS.RED}], [{v:2, c:COLORS.RED}, {v:6, c:COLORS.BLUE}, {v:3, c:COLORS.RED}], [], []], queue: [{v:3, c:COLORS.BLUE}] },
+            // color match
+            { target: 20, board: [[{v:2, c:COLORS.BLUE}], [{v:2, c:COLORS.RED}, {v:5, c:COLORS.BLUE}], [], [{v:1, c:COLORS.RED}], [{v:2, c:COLORS.RED}]], queue: [{v:5, c:COLORS.RED}, {v:2, c:COLORS.BLUE}] },
+            // numbers twice
+            { target: 24, board: [[{v:2, c:COLORS.RED}], [{v:6, c:COLORS.RED}, {v:2, c:COLORS.BLUE},{v:4, c:COLORS.BLUE}], [], [{v:4, c:COLORS.RED}, {v:8, c:COLORS.BLUE}], [{v:3, c:COLORS.RED},]], queue: [{v:2, c:COLORS.RED}, {v:3, c:COLORS.BLUE}] },
+            // Using 1 as connect
+            { target: 20, board: [[{v:5, c:COLORS.RED}, {v:2, c:COLORS.BLUE}], [{v:2, c:COLORS.RED}, {v:2, c:COLORS.BLUE}, {v:2, c:COLORS.BLUE}], [{v:5, c:COLORS.BLUE}], [{v:2, c:COLORS.RED}], [{v:5, c:COLORS.RED}]], queue: [{v:1, c:COLORS.BLUE}, {v:1, c:COLORS.RED}] },
+            // three balls plan ahead
+            { target: 12, board: [[{v:2, c:COLORS.BLUE}], [{v:2, c:COLORS.BLUE}, {v:2, c:COLORS.BLUE}, {v:2, c:COLORS.RED}], [], [{v:2, c:COLORS.RED}, {v:3, c:COLORS.RED}], []], queue: [{v:6, c:COLORS.BLUE}, {v:1, c:COLORS.RED}, {v:6, c:COLORS.BLUE}] },
+            
+            // main set
+            { target: 12, board: [[{v:3, c:COLORS.RED}, {v:2, c:COLORS.RED}], [], [{v:2, c:COLORS.RED}], [{v:2, c:COLORS.RED}, {v:2, c:COLORS.RED}, {v:2, c:COLORS.RED}], []], queue: [{v:3, c:COLORS.RED}, {v:1, c:COLORS.RED}] },
+            { target: 45, board: [[], [{v:3, c:COLORS.RED}], [{v:3, c:COLORS.RED}], [{v:5, c:COLORS.BLUE}, {v:5, c:COLORS.RED}], [{v:3, c:COLORS.BLUE}, {v:15, c:COLORS.RED}]], queue: [{v:3, c:COLORS.RED}, {v:3, c:COLORS.BLUE}] },
+            { target: 44, board: [[], [{v:2, c:COLORS.BLUE}], [{v:22, c:COLORS.RED}], [{v:11, c:COLORS.BLUE}, {v:2, c:COLORS.RED}], [{v:2, c:COLORS.BLUE}, {v:11, c:COLORS.RED}]], queue: [{v:2, c:COLORS.RED}, {v:1, c:COLORS.BLUE}] },
+            { target: 50, board: [[{v:5, c:COLORS.RED}], [{v:5, c:COLORS.BLUE}], [{v:2, c:COLORS.BLUE}, {v:5, c:COLORS.RED}, {v:5, c:COLORS.RED}], [], [{v:5, c:COLORS.BLUE}]], queue: [{v:5, c:COLORS.BLUE}, {v:2, c:COLORS.RED}] },
+            { target: 30, board: [[], [{v:2, c:COLORS.BLUE}, {v:2, c:COLORS.RED}], [{v:6, c:COLORS.BLUE}, {v:5, c:COLORS.RED}, {v:15, c:COLORS.BLUE}], [{v:10, c:COLORS.RED}], []], queue: [{v:3, c:COLORS.RED}, {v:5, c:COLORS.BLUE}] },
+            { target: 28, board: [[{v:2, c:COLORS.BLUE}], [{v:7, c:COLORS.RED}, {v:7, c:COLORS.BLUE}, {v:14, c:COLORS.BLUE}], [{v:2, c:COLORS.BLUE}, {v:1, c:COLORS.BLUE}], [], [{v:14, c:COLORS.BLUE}]], queue: [{v:2, c:COLORS.BLUE}, {v:4, c:COLORS.RED}] },
+            { target: 12, board: [[], [{v:2, c:COLORS.BLUE}, {v:2, c:COLORS.RED}], [{v:6, c:COLORS.RED}, {v:3, c:COLORS.BLUE}], [{v:2, c:COLORS.BLUE}, {v:3, c:COLORS.RED}, {v:2, c:COLORS.BLUE}], []], queue: [{v:4, c:COLORS.RED}, {v:6, c:COLORS.BLUE}] }, // hard but good
+            { target: 54, board: [[], [{v:3, c:COLORS.RED}], [{v:1, c:COLORS.RED}], [{v:3, c:COLORS.RED}], [{v:2, c:COLORS.BLUE}, {v:2, c:COLORS.RED}, {v:3, c:COLORS.RED}, {v:27, c:COLORS.BLUE}]], queue: [{v:9, c:COLORS.RED}, {v:1, c:COLORS.RED}] },
+            { target: 88, board: [[{v:2, c:COLORS.RED}, {v:2, c:COLORS.BLUE}], [{v:22, c:COLORS.RED}], [{v:1, c:COLORS.BLUE}, {v:2, c:COLORS.BLUE}, {v:4, c:COLORS.RED}], [{v:2, c:COLORS.BLUE}], []], queue: [{v:44, c:COLORS.RED}, {v:22, c:COLORS.BLUE}] },
+            { target: 24, board: [[{v:6, c:COLORS.BLUE}], [{v:2, c:COLORS.BLUE}, {v:3, c:COLORS.RED}, {v:2, c:COLORS.BLUE}], [{v:3, c:COLORS.RED}, {v:3, c:COLORS.BLUE}], [{v:4, c:COLORS.BLUE}], []], queue: [{v:8, c:COLORS.RED}, {v:2, c:COLORS.BLUE}] },
+            { target: 30, board: [[{v:3, c:COLORS.RED}], [{v:2, c:COLORS.BLUE}, {v:6, c:COLORS.RED}, {v:3, c:COLORS.BLUE}, {v:5, c:COLORS.BLUE}], [{v:3, c:COLORS.RED}], [], []], queue: [{v:10, c:COLORS.RED}, {v:5, c:COLORS.RED}] },
+            { target: 90, board: [[{v:2, c:COLORS.BLUE}], [{v:2, c:COLORS.BLUE}, {v:5, c:COLORS.BLUE}, {v:5, c:COLORS.BLUE}], [], [{v:1, c:COLORS.BLUE}], [{v:9, c:COLORS.BLUE}]], queue: [{v:5, c:COLORS.BLUE}, {v:9, c:COLORS.BLUE}] },
+            { target: 84, board: [[], [{v:7, c:COLORS.BLUE}, {v:6, c:COLORS.BLUE}], [{v:4, c:COLORS.BLUE}, {v:7, c:COLORS.BLUE}], [{v:2, c:COLORS.BLUE}], [{v:7, c:COLORS.BLUE}]], queue: [{v:1, c:COLORS.BLUE}, {v:3, c:COLORS.BLUE}] },
+            { target: 60, board: [[{v:6, c:COLORS.BLUE}], [], [{v:2, c:COLORS.BLUE}], [{v:6, c:COLORS.BLUE}, {v:3, c:COLORS.BLUE}, {v:5, c:COLORS.BLUE}], [{v:3, c:COLORS.BLUE}]], queue: [{v:5, c:COLORS.BLUE}, {v:4, c:COLORS.BLUE}] },
+            { target: 42, board: [[], [{v:3, c:COLORS.BLUE}], [{v:2, c:COLORS.BLUE}, {v:14, c:COLORS.RED}], [{v:1, c:COLORS.BLUE}, {v:2, c:COLORS.RED}, {v:3, c:COLORS.RED}, {v:3, c:COLORS.BLUE}], [{v:3, c:COLORS.BLUE}]], queue: [{v:7, c:COLORS.BLUE}, {v:21, c:COLORS.RED}] },
+            { target: 20, board: [[{v:2, c:COLORS.BLUE}, {v:5, c:COLORS.RED}, {v:2, c:COLORS.RED}], [{v:5, c:COLORS.BLUE}], [{v:2, c:COLORS.RED}, {v:10, c:COLORS.BLUE}], [], []], queue: [{v:2, c:COLORS.BLUE}, {v:2, c:COLORS.BLUE}, {v:2, c:COLORS.RED}] },
+            { target: 44, board: [[{v:4, c:COLORS.RED}], [{v:2, c:COLORS.BLUE}, {v:22, c:COLORS.RED}], [{v:11, c:COLORS.RED}, {v:2, c:COLORS.BLUE}, {v:22, c:COLORS.RED}], [{v:2, c:COLORS.RED}], []], queue: [{v:11, c:COLORS.BLUE}, {v:2, c:COLORS.RED}, {v:1, c:COLORS.RED}] },
+            { target: 18, board: [[{v:3, c:COLORS.RED}, {v:3, c:COLORS.RED}, {v:2, c:COLORS.BLUE}], [{v:3, c:COLORS.BLUE}], [], [{v:3, c:COLORS.BLUE}, {v:9, c:COLORS.RED}], [{v:2, c:COLORS.RED}]], queue: [{v:2, c:COLORS.RED}, {v:3, c:COLORS.BLUE}, {v:6, c:COLORS.BLUE}] },
+            { target: 63, board: [[{v:3, c:COLORS.BLUE}, {v:3, c:COLORS.BLUE}], [], [{v:3, c:COLORS.BLUE}, {v:7, c:COLORS.RED}, {v:3, c:COLORS.BLUE}], [{v:3, c:COLORS.BLUE}], [{v:3, c:COLORS.BLUE}]], queue: [{v:7, c:COLORS.BLUE}, {v:7, c:COLORS.BLUE}, {v:9, c:COLORS.RED}] },
+            { target: 100, board: [[], [{v:2, c:COLORS.BLUE}, {v:2, c:COLORS.BLUE}], [{v:5, c:COLORS.BLUE}, {v:1, c:COLORS.RED}, {v:1, c:COLORS.RED}], [{v:2, c:COLORS.RED}, {v:2, c:COLORS.BLUE}, {v:2, c:COLORS.RED}], []], queue: [{v:25, c:COLORS.RED}, {v:25, c:COLORS.BLUE}, {v:10, c:COLORS.BLUE}] }, 
+            { target: 12, board: [[], [{v:2, c:COLORS.BLUE}], [{v:1, c:COLORS.BLUE}, {v:4, c:COLORS.RED}], [{v:3, c:COLORS.RED}, {v:1, c:COLORS.BLUE}, {v:4, c:COLORS.RED}], [{v:3, c:COLORS.RED}, {v:2, c:COLORS.BLUE}]], queue: [{v:3, c:COLORS.BLUE}, {v:3, c:COLORS.RED}, {v:4, c:COLORS.RED}] }, 
+            { target: 88, board: [[{v:2, c:COLORS.RED}, {v:2, c:COLORS.BLUE}], [{v:22, c:COLORS.RED}], [{v:2, c:COLORS.BLUE}, {v:2, c:COLORS.RED}, {v:11, c:COLORS.BLUE}, {v:2, c:COLORS.RED}], [{v:22, c:COLORS.RED}], []], queue: [{v:11, c:COLORS.BLUE}, {v:2, c:COLORS.RED}, {v:4, c:COLORS.BLUE}] }, 
+            { target: 56, board: [[], [], [{v:7, c:COLORS.BLUE}, {v:1, c:COLORS.BLUE}, {v:7, c:COLORS.BLUE}, {v:1, c:COLORS.RED}, {v:2, c:COLORS.BLUE}], [{v:14, c:COLORS.RED}, {v:7, c:COLORS.BLUE}, {v:2, c:COLORS.BLUE}, {v:1, c:COLORS.BLUE}, {v:7, c:COLORS.BLUE}], []], queue: [{v:4, c:COLORS.RED}, {v:2, c:COLORS.BLUE}, {v:8, c:COLORS.BLUE}] },
+            { target: 100, board: [[{v:5, c:COLORS.RED}, {v:10, c:COLORS.BLUE}, {v:20, c:COLORS.RED}], [], [{v:2, c:COLORS.BLUE}, {v:20, c:COLORS.RED}], [{v:10, c:COLORS.BLUE}], [{v:1, c:COLORS.BLUE}, {v:2, c:COLORS.BLUE}]], queue: [{v:5, c:COLORS.RED}, {v:10, c:COLORS.BLUE}, {v:5, c:COLORS.BLUE}] }, 
+            { target: 44, board: [[], [], [{v:2, c:COLORS.BLUE}, {v:2, c:COLORS.RED}], [{v:1, c:COLORS.RED}, {v:1, c:COLORS.BLUE}, {v:22, c:COLORS.BLUE}, {v:4, c:COLORS.BLUE}, {v:11, c:COLORS.RED}], [{v:11, c:COLORS.RED}]], queue: [{v:11, c:COLORS.BLUE}, {v:2, c:COLORS.RED}, {v:4, c:COLORS.RED}] }, 
+            { target: 18, board: [[{v:3, c:COLORS.BLUE}], [{v:3, c:COLORS.BLUE}, {v:2, c:COLORS.RED},], [{v:3, c:COLORS.RED}, {v:6, c:COLORS.BLUE},], [{v:9, c:COLORS.BLUE}], []], queue: [{v:3, c:COLORS.RED}, {v:3, c:COLORS.BLUE}, {v:2, c:COLORS.BLUE}] }, 
+            { target: 24, board: [[{v:2, c:COLORS.RED}], [{v:1, c:COLORS.RED}, {v:2, c:COLORS.BLUE}], [{v:4, c:COLORS.RED}, {v:2, c:COLORS.BLUE}, {v:2, c:COLORS.RED}], [{v:4, c:COLORS.BLUE}, {v:2, c:COLORS.BLUE}], []], queue: [{v:6, c:COLORS.BLUE}, {v:6, c:COLORS.RED}, {v:6, c:COLORS.BLUE}] }, 
+            { target: 36, board: [[{v:3, c:COLORS.RED}, {v:3, c:COLORS.RED}, {v:3, c:COLORS.BLUE}], [{v:3, c:COLORS.BLUE}, {v:3, c:COLORS.RED}], [{v:2, c:COLORS.RED}, {v:1, c:COLORS.RED}, {v:4, c:COLORS.BLUE}], [], []], queue: [{v:3, c:COLORS.RED}, {v:4, c:COLORS.RED}, {v:2, c:COLORS.RED}] },
+            { target: 100, board: [[{v:5, c:COLORS.BLUE}], [], [{v:5, c:COLORS.RED}, {v:4, c:COLORS.BLUE}, {v:2, c:COLORS.RED}, {v:2, c:COLORS.BLUE}], [{v:5, c:COLORS.BLUE}, {v:1, c:COLORS.RED}], [{v:10, c:COLORS.BLUE}]], queue: [{v:2, c:COLORS.BLUE}, {v:10, c:COLORS.RED}, {v:25, c:COLORS.BLUE}] },
+            { target: 36, board: [[], [{v:2, c:COLORS.RED}, {v:2, c:COLORS.BLUE}, {v:1, c:COLORS.RED}], [{v:3, c:COLORS.BLUE}, {v:2, c:COLORS.RED}, {v:1, c:COLORS.RED}], [{v:2, c:COLORS.BLUE}, {v:2, c:COLORS.BLUE}], []], queue: [{v:9, c:COLORS.RED}, {v:9, c:COLORS.BLUE}, {v:6, c:COLORS.BLUE}] }, 
+            { target: 99, board: [[{v:11, c:COLORS.BLUE}, {v:11, c:COLORS.BLUE}], [], [{v:3, c:COLORS.BLUE}], [{v:11, c:COLORS.RED}, {v:11, c:COLORS.BLUE}], [{v:9, c:COLORS.BLUE}]], queue: [{v:1, c:COLORS.BLUE}, {v:9, c:COLORS.RED}, {v:3, c:COLORS.BLUE}] },
+            { target: 88, board: [[{v:2, c:COLORS.RED}, {v:2, c:COLORS.BLUE}], [{v:2, c:COLORS.RED}, {v:1, c:COLORS.RED}, {v:11, c:COLORS.BLUE}], [{v:4, c:COLORS.BLUE}, {v:11, c:COLORS.RED}], [{v:11, c:COLORS.RED}], []], queue: [{v:4, c:COLORS.BLUE}, {v:4, c:COLORS.RED}, {v:2, c:COLORS.RED}] }, 
+            { target: 54, board: [[{v:3, c:COLORS.BLUE}], [{v:1, c:COLORS.BLUE}, {v:3, c:COLORS.RED}], [{v:9, c:COLORS.BLUE}, {v:3, c:COLORS.RED}, {v:3, c:COLORS.BLUE}], [{v:9, c:COLORS.RED}, {v:3, c:COLORS.RED}], []], queue: [{v:6, c:COLORS.RED}, {v:6, c:COLORS.BLUE}, {v:6, c:COLORS.RED}] }, 
+            { target: 12, board: [[], [], [{v:2, c:COLORS.RED}, {v:1, c:COLORS.BLUE}, {v:2, c:COLORS.RED}, {v:6, c:COLORS.BLUE}], [{v:2, c:COLORS.BLUE}, {v:2, c:COLORS.RED}, {v:2, c:COLORS.RED}], []], queue: [{v:6, c:COLORS.RED}, {v:1, c:COLORS.BLUE}, {v:3, c:COLORS.RED}] }, 
+            { target: 18, board: [[{v:3, c:COLORS.RED}], [{v:3, c:COLORS.BLUE}, {v:3, c:COLORS.BLUE}], [{v:1, c:COLORS.RED}], [{v:3, c:COLORS.BLUE}, {v:3, c:COLORS.BLUE}], [{v:1, c:COLORS.RED}, {v:3, c:COLORS.BLUE}]], queue: [{v:6, c:COLORS.RED}, {v:3, c:COLORS.RED}, {v:2, c:COLORS.BLUE}] }, 
+            { target: 54, board: [[], [{v:6, c:COLORS.RED}], [{v:3, c:COLORS.BLUE}, {v:3, c:COLORS.RED}, {v:2, c:COLORS.BLUE}, {v:3, c:COLORS.RED}], [{v:6, c:COLORS.RED}], [{v:3, c:COLORS.RED}, {v:3, c:COLORS.BLUE}]], queue: [{v:2, c:COLORS.BLUE}, {v:3, c:COLORS.RED}, {v:9, c:COLORS.BLUE}] }, 
+            { target: 28, board: [[{v:7, c:COLORS.BLUE}], [{v:1, c:COLORS.BLUE}, {v:1, c:COLORS.RED}, {v:14, c:COLORS.RED}, {v:4, c:COLORS.RED}, {v:7, c:COLORS.BLUE}], [{v:2, c:COLORS.RED}, {v:2, c:COLORS.BLUE}], [], []], queue: [{v:7, c:COLORS.RED}, {v:2, c:COLORS.BLUE}, {v:4, c:COLORS.BLUE}] }, 
+            { target: 18, board: [[{v:3, c:COLORS.RED}], [{v:3, c:COLORS.BLUE}, {v:6, c:COLORS.RED}, {v:6, c:COLORS.BLUE}], [], [{v:2, c:COLORS.RED}, {v:1, c:COLORS.BLUE}], [{v:3, c:COLORS.BLUE}, {v:3, c:COLORS.BLUE}]], queue: [{v:9, c:COLORS.RED}, {v:6, c:COLORS.BLUE}, {v:1, c:COLORS.RED}] }, // easy
+            { target: 99, board: [[], [{v:3, c:COLORS.RED}], [{v:1, c:COLORS.RED}, {v:9, c:COLORS.BLUE}], [{v:11, c:COLORS.BLUE}, {v:3, c:COLORS.RED}, {v:9, c:COLORS.BLUE}], [{v:11, c:COLORS.BLUE},]], queue: [{v:11, c:COLORS.RED}, {v:11, c:COLORS.BLUE}, {v:9, c:COLORS.BLUE}] }, 
+            { target: 24, board: [[{v:2, c:COLORS.RED}, {v:2, c:COLORS.BLUE}], [], [{v:2, c:COLORS.RED}], [{v:3, c:COLORS.RED}, {v:3, c:COLORS.BLUE}, {v:2, c:COLORS.RED}, {v:4, c:COLORS.RED}], [{v:3, c:COLORS.RED}]], queue: [{v:1, c:COLORS.BLUE}, {v:2, c:COLORS.RED}, {v:4, c:COLORS.BLUE}] }, //easy
+            { target: 88, board: [[], [{v:11, c:COLORS.RED}, {v:4, c:COLORS.RED}], [{v:1, c:COLORS.BLUE}, {v:2, c:COLORS.BLUE}, {v:2, c:COLORS.RED}], [], [{v:2, c:COLORS.RED}]], queue: [{v:22, c:COLORS.RED}, {v:4, c:COLORS.RED}, {v:44, c:COLORS.BLUE}] }, 
+            { target: 36, board: [[{v:1, c:COLORS.BLUE}, {v:2, c:COLORS.BLUE}], [{v:6, c:COLORS.BLUE}], [{v:2, c:COLORS.BLUE}, {v:12, c:COLORS.RED}], [], [{v:3, c:COLORS.RED}, {v:6, c:COLORS.BLUE}, {v:12, c:COLORS.RED}]], queue: [{v:3, c:COLORS.RED}, {v:6, c:COLORS.BLUE}, {v:3, c:COLORS.BLUE}] },
+            { target: 70, board: [[], [{v:10, c:COLORS.RED}, {v:5, c:COLORS.RED}], [{v:5, c:COLORS.BLUE}, {v:7, c:COLORS.BLUE}, {v:1, c:COLORS.RED}], [{v:5, c:COLORS.BLUE}], [{v:10, c:COLORS.RED}]], queue: [{v:14, c:COLORS.RED}, {v:2, c:COLORS.BLUE}, {v:7, c:COLORS.RED}] },
+            { target: 18, board: [[{v:9, c:COLORS.BLUE}], [{v:2, c:COLORS.RED}, {v:2, c:COLORS.BLUE}], [{v:3, c:COLORS.BLUE}], [], [{v:2, c:COLORS.BLUE}, {v:2, c:COLORS.BLUE}]], queue: [{v:1, c:COLORS.BLUE}, {v:9, c:COLORS.RED}, {v:3, c:COLORS.BLUE}] },
+            { target: 66, board: [[{v:6, c:COLORS.BLUE}], [{v:3, c:COLORS.RED}], [{v:3, c:COLORS.RED}, {v:11, c:COLORS.RED}, {v:1, c:COLORS.BLUE}], [{v:6, c:COLORS.BLUE}, {v:3, c:COLORS.BLUE}], []], queue: [{v:22, c:COLORS.BLUE}, {v:2, c:COLORS.RED}, {v:11, c:COLORS.BLUE}] },
+            { target: 84, board: [[], [{v:21, c:COLORS.BLUE}, {v:7, c:COLORS.BLUE}], [{v:3, c:COLORS.BLUE}, {v:4, c:COLORS.RED}, {v:4, c:COLORS.BLUE}], [], [{v:2, c:COLORS.BLUE}, {v:6, c:COLORS.BLUE}]], queue: [{v:21, c:COLORS.RED}, {v:7, c:COLORS.BLUE}, {v:4, c:COLORS.BLUE}] },
+            { target: 36, board: [[], [{v:6, c:COLORS.BLUE}, {v:12, c:COLORS.BLUE}, {v:6, c:COLORS.BLUE}, {v:3, c:COLORS.BLUE}], [{v:3, c:COLORS.BLUE}, {v:4, c:COLORS.BLUE}, {v:6, c:COLORS.RED}], [], [{v:3, c:COLORS.RED}]], queue: [{v:2, c:COLORS.RED}, {v:4, c:COLORS.BLUE}, {v:3, c:COLORS.BLUE}] },
+            { target: 12, board: [[], [], [{v:2, c:COLORS.RED}, {v:1, c:COLORS.BLUE}, {v:2, c:COLORS.RED}, {v:6, c:COLORS.BLUE}], [{v:2, c:COLORS.BLUE}, {v:2, c:COLORS.RED}, {v:2, c:COLORS.RED}], []], queue: [{v:6, c:COLORS.RED}, {v:1, c:COLORS.BLUE}, {v:3, c:COLORS.RED}] }, 
+            { target: 40, board: [[], [{v:4, c:COLORS.RED}, {v:2, c:COLORS.RED}], [{v:4, c:COLORS.BLUE}, {v:2, c:COLORS.RED}, {v:2, c:COLORS.BLUE}], [{v:1, c:COLORS.BLUE}, {v:2, c:COLORS.RED}], [{v:2, c:COLORS.BLUE}]], queue: [{v:10, c:COLORS.RED}, {v:10, c:COLORS.BLUE}, {v:10, c:COLORS.RED}] }, 
+            { target: 50, board: [[{v:5, c:COLORS.RED}], [{v:5, c:COLORS.RED}, {v:2, c:COLORS.BLUE}, {v:1, c:COLORS.BLUE}], [{v:5, c:COLORS.BLUE}, {v:10, c:COLORS.RED}, {v:1, c:COLORS.RED}], [{v:25, c:COLORS.RED}], []], queue: [{v:5, c:COLORS.BLUE}, {v:5, c:COLORS.RED}, {v:2, c:COLORS.RED}] }, 
+            { target: 60, board: [[], [{v:15, c:COLORS.RED}, {v:5, c:COLORS.RED}], [{v:3, c:COLORS.RED}, {v:4, c:COLORS.BLUE}, {v:4, c:COLORS.RED}], [], [{v:2, c:COLORS.RED}, {v:6, c:COLORS.RED}]], queue: [{v:15, c:COLORS.BLUE}, {v:5, c:COLORS.RED}, {v:4, c:COLORS.RED}] }, 
+            { target: 28, board: [[], [], [{v:2, c:COLORS.BLUE}, {v:1, c:COLORS.RED}, {v:2, c:COLORS.BLUE}, {v:14, c:COLORS.RED}], [{v:2, c:COLORS.RED}, {v:2, c:COLORS.BLUE}, {v:2, c:COLORS.BLUE}], []], queue: [{v:14, c:COLORS.BLUE}, {v:1, c:COLORS.RED}, {v:7, c:COLORS.BLUE}] }, 
+            { target: 30, board: [[], [{v:6, c:COLORS.BLUE}, {v:3, c:COLORS.BLUE}], [{v:3, c:COLORS.RED}, {v:5, c:COLORS.RED}, {v:1, c:COLORS.BLUE}], [{v:3, c:COLORS.RED}], [{v:6, c:COLORS.BLUE}]], queue: [{v:10, c:COLORS.BLUE}, {v:2, c:COLORS.RED}, {v:5, c:COLORS.BLUE}] }, 
+            { target: 72, board: [[], [{v:3, c:COLORS.RED}, {v:6, c:COLORS.BLUE}], [{v:3, c:COLORS.BLUE}, {v:2, c:COLORS.BLUE}], [{v:2, c:COLORS.RED}], [{v:2, c:COLORS.RED}, {v:2, c:COLORS.RED}]], queue: [{v:12, c:COLORS.RED}, {v:3, c:COLORS.RED}, {v:2, c:COLORS.BLUE}] }, 
+            { target: 75, board: [[{v:3, c:COLORS.RED}, {v:3, c:COLORS.RED}], [], [{v:5, c:COLORS.RED}], [{v:3, c:COLORS.BLUE}, {v:3, c:COLORS.RED}], [{v:25, c:COLORS.RED}]], queue: [{v:1, c:COLORS.RED}, {v:25, c:COLORS.BLUE}, {v:5, c:COLORS.RED}] }, 
+            { target: 12, board: [[], [{v:4, c:COLORS.BLUE}], [{v:2, c:COLORS.RED}, {v:6, c:COLORS.BLUE}, {v:1, c:COLORS.BLUE}], [{v:2, c:COLORS.BLUE}, {v:3, c:COLORS.RED}, {v:1, c:COLORS.RED}], [{v:2, c:COLORS.BLUE}]], queue: [{v:2, c:COLORS.RED}, {v:2, c:COLORS.BLUE}, {v:3, c:COLORS.BLUE}] }, // checked to here
+
+        ]
+    
+
+    // SECTION: GAME STATE
+    let currentLevelIndex = 5; // Default start at Puzzle 1 (idx 5)
+    let isEndless = false;
+    let isTutorialMode = false;
+    let history = [];
+    let score = 0, turnPops = 0;
+    let grid = Array.from({ length: COLS }, () => []);
+    let queue = [];
+    let gameState = 'READY', pendingBall = null, mouseX = canvas.width / 2;
+    let highlightQueue = [], activeHighlight = null, ballsToPopAtEnd = new Set(), floatingScores = [];
+    let shiftingNewRow = [], shiftYOffset = 0;
+
+    canvas.width = COLS * GRID_SIZE;
+    canvas.height = (ROWS + 1) * GRID_SIZE;
+
+    // SECTION: CORE FUNCTIONS
+    function toggleInstructions(show) {
+        document.getElementById('instructions-overlay').style.display = show ? 'flex' : 'none';
+        if (show) renderDiagrams();
+    }
+
+    function startTutorial() {
+        isTutorialMode = true;
+        initLevel(0);
+        toggleInstructions(false);
+    }
+
+    function startMainGame() {
+        isTutorialMode = false;
+        initLevel(5); // Start at index 5 (Puzzle 1)
+        toggleInstructions(false);
+    }
+
+    function saveState() {
+        const state = {
+            grid: grid.map(col => col.map(b => ({...b}))),
+            queue: [...queue],
+            score: score
+        };
+        history.push(state);
+        if (history.length > 20) history.shift();
+        updateControlUI();
+    }
+
+    function undoMove() {
+        if (history.length === 0 || gameState !== 'READY') return;
+        const last = history.pop();
+        grid = last.grid;
+        queue = last.queue;
+        score = last.score;
+        document.getElementById('scoreDisp').innerText = score;
+        updateQueueUI();
+        nextFromQueue();
+        updateControlUI();
+    }
+
+    function updateControlUI() {
+        document.getElementById('undoBtn').disabled = (history.length === 0 || isEndless);
+        document.getElementById('skip-btn-row').style.display = isTutorialMode ? 'flex' : 'none';
+        
+        const labelEl = document.getElementById('puzzle-label-small');
+        labelEl.innerText = isTutorialMode ? "Tutorial Puzzle" : "Puzzle";
+    }
+
+    function initLevel(idx) {
+        currentLevelIndex = idx;
+        const p = puzzles[idx];
+        
+        // Reset state for new level
+        history = []; 
+        score = 0; 
+        document.getElementById('scoreDisp').innerText = score;
+
+        document.getElementById('targetVal').innerText = p.target;
+        
+        // CALCULATE DISPLAY NUMBER: 
+        // If Tutorial Mode: Index 0-4 becomes 1-5
+        // If Main Mode: Index 5 becomes 1, Index 6 becomes 2, etc.
+        const dispNum = isTutorialMode ? (idx + 1) : (idx - 4);
+        document.getElementById('levelDisp').innerText = dispNum;
+        
+        // Boundaries (Tutorial is 0-4, Main is 5+)
+        if (isTutorialMode) {
+            document.getElementById('prevLevel').disabled = (idx === 0);
+            document.getElementById('nextLevel').disabled = (idx === 4);
+        } else {
+            document.getElementById('prevLevel').disabled = (idx === 5);
+            document.getElementById('nextLevel').disabled = (idx === puzzles.length - 1);
+        }
+
+        grid = p.board.map(col => col.map((b, r) => ({
+            val: b.v, color: b.c,
+            y: canvas.height - (r * GRID_SIZE + GRID_SIZE / 2),
+            targetY: canvas.height - (r * GRID_SIZE + GRID_SIZE / 2),
+            vy: 0, x: 0 
+        })));
+        grid.forEach((col, c) => col.forEach(b => b.x = c * GRID_SIZE + GRID_SIZE/2));
+        queue = [...p.queue];
+        isEndless = false;
+        gameState = 'READY';
+        updateQueueUI();
+        nextFromQueue();
+        updateControlUI();
+        document.getElementById('overlay').style.display = 'none';
+    }
+
+    function checkPuzzleStatus(hitTop = false) {
+        const boardEmpty = grid.every(col => col.length === 0);
+        const nextBtn = document.getElementById('nextBtn');
+        const retryBtn = document.getElementById('retryBtn');
+        const continueBtn = document.getElementById('continueBtn');
+        const title = document.getElementById('statusTitle');
+        const msg = document.getElementById('statusMsg');
+
+        gameState = 'GAMEOVER';
+        document.getElementById('overlay').style.display = 'flex';
+
+        // TUTORIAL COMPLETION LOGIC
+        if (isTutorialMode && currentLevelIndex === 4 && boardEmpty) {
+            title.innerText = "TUTORIAL COMPLETE";
+            msg.innerText = "Ready for the real puzzles?";
+            nextBtn.innerText = "Play Puzzles";
+            nextBtn.onclick = startMainGame;
+            retryBtn.innerText = "Retry Puzzle";
+            retryBtn.onclick = startTutorial;
+            continueBtn.style.display = 'none'; // Ensure it's hidden here
+            return;
+        }
+
+        // STANDARD BUTTON DEFAULTS
+        nextBtn.onclick = loadNextPuzzle;
+        nextBtn.innerText = "Next Puzzle";
+        retryBtn.onclick = resetPuzzle;
+
+        if (boardEmpty) {
+                title.innerText = "PUZZLE COMPLETED";
+                msg.innerText = "Perfect solve!";
+                nextBtn.style.display = 'block';
+                
+                // Hide "Keep Playing" if in Tutorial Mode, otherwise show it
+                continueBtn.style.display = isTutorialMode ? 'none' : 'block'; 
+            } else {
+                title.innerText = hitTop ? "GRID FULL" : "PUZZLE INCOMPLETE";
+                msg.innerText = hitTop ? "The stack hit the top!" : "Try again to clear the board.";
+                nextBtn.style.display = 'none';
+                
+                // Updated: Ensure it's hidden if Tutorial Mode, or if the grid is full
+                if (isTutorialMode || hitTop) {
+                    continueBtn.style.display = 'none';
+                } else {
+                    continueBtn.style.display = 'block';
+                }
+            }
+    }
+
+    // ... Standard Interaction Logic ...
+    canvas.addEventListener('mousedown', () => {
+        if (gameState !== 'READY' || !pendingBall) return;
+        const col = Math.floor(mouseX / GRID_SIZE);
+        if (col >= 0 && col < COLS) {
+            if (grid[col].length >= ROWS) { checkPuzzleStatus(true); return; }
+            saveState();
+            let ball = pendingBall;
+            ball.x = col * GRID_SIZE + GRID_SIZE / 2;
+            ball.targetY = canvas.height - (grid[col].length * GRID_SIZE + GRID_SIZE / 2);
+            grid[col].push(ball);
+            queue.shift();
+            updateQueueUI();
+            gameState = 'ANIMATING';
+            turnPops = 0;
+        }
+    });
+
+    // Touch support
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (gameState !== 'READY' || !pendingBall) return;
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        mouseX = touch.clientX - rect.left;
+        const col = Math.floor(mouseX / GRID_SIZE);
+        if (col >= 0 && col < COLS) {
+            if (grid[col].length >= ROWS) { checkPuzzleStatus(true); return; }
+            saveState();
+            let ball = pendingBall;
+            ball.x = col * GRID_SIZE + GRID_SIZE / 2;
+            ball.targetY = canvas.height - (grid[col].length * GRID_SIZE + GRID_SIZE / 2);
+            grid[col].push(ball);
+            queue.shift();
+            updateQueueUI();
+            gameState = 'ANIMATING';
+            turnPops = 0;
+        }
+    }, { passive: false });
+
+    // (Remaining functions: changeLevel, nextFromQueue, updateQueueUI, draw, checkMatches, etc. same as original source)
+    
+    function changeLevel(delta) {
+        let n = currentLevelIndex + delta;
+        if (isTutorialMode && n >= 0 && n <= 4) initLevel(n);
+        else if (!isTutorialMode && n >= 5 && n < puzzles.length) initLevel(n);
+    }
+
+    function renderDiagrams() {
+        const drawMini = (id, balls, w, h) => {
+            const c = document.getElementById(id);
+            const cx = c.getContext('2d');
+            const scale = 0.5;
+            const sz = GRID_SIZE * scale;
+            c.width = w * sz; 
+            c.height = h * sz;
+
+            cx.clearRect(0, 0, c.width, c.height);
+
+            balls.forEach(b => {
+                // Draw the ball circle
+                cx.beginPath(); 
+                cx.arc(b.x * sz + sz / 2, b.y * sz + sz / 2, BALL_RADIUS * scale, 0, Math.PI * 2);
+                cx.fillStyle = b.c; 
+                cx.fill();
+
+                // Draw the factor number
+                cx.fillStyle = 'white'; 
+                cx.font = '600 12px Outfit'; 
+                cx.textAlign = 'center'; 
+                cx.textBaseline = 'middle';
+                cx.fillText(b.v, b.x * sz + sz / 2, b.y * sz + sz / 2);
+    });
+        };
+
+        // Calling the draws (same data as before, just without boxes)
+        drawMini('diag1', [{x:0,y:0,v:2,c:COLORS.RED},{x:0,y:1,v:2,c:COLORS.RED},{x:0,y:2,v:6,c:COLORS.RED}], 1, 3);
+        drawMini('diag2', [{x:0,y:0,v:3,c:COLORS.BLUE},{x:1,y:0,v:8,c:COLORS.BLUE}], 2, 1);
+        drawMini('diag3', [{x:0,y:0,v:4,c:COLORS.RED},{x:1,y:0,v:1,c:COLORS.RED},{x:2,y:0,v:2,c:COLORS.RED},{x:1,y:1,v:3,c:COLORS.RED}], 3, 2);
+        drawMini('diag4', [{x:0,y:0,v:2,c:COLORS.RED},{x:1,y:0,v:2,c:COLORS.RED},{x:2,y:0,v:2,c:COLORS.RED},{x:3,y:0,v:3,c:COLORS.RED},{x:4,y:0,v:8,c:COLORS.RED}], 5, 1);
+    }
+
+    function updateQueueUI() {
+        const container = document.getElementById('queue-container');
+        container.innerHTML = '';
+        queue.forEach((b, i) => {
+            const d = document.createElement('div');
+            d.className = `queue-ball ${i === 0 ? 'next' : ''}`;
+            d.style.backgroundColor = b.c; d.innerText = b.v;
+            container.appendChild(d);
+        });
+    }
+
+    function nextFromQueue() {
+        if (queue.length > 0) {
+            const b = queue[0];
+            // Changed y from GRID_SIZE to GRID_SIZE / 2
+            pendingBall = { val: b.v, color: b.c, y: GRID_SIZE / 2, vy: 0, x: mouseX, targetY: 0 };
+        } else if (isEndless) initiateShift();
+}
+
+    function initiateShift() {
+        shiftingNewRow = [];
+        for(let c=0; c<COLS; c++) {
+            const data = generateRandomBallData();
+            shiftingNewRow.push({ val: data.v, color: data.c, x: c * GRID_SIZE + GRID_SIZE/2, y: canvas.height + GRID_SIZE/2, vy: 0, targetY: 0 });
+        }
+        gameState = 'SHIFTING'; shiftYOffset = 0;
+    }
+
+    function finalizeShift() {
+        let hitTop = false;
+        for(let c=0; c<COLS; c++) {
+            if (grid[c].length >= ROWS) hitTop = true;
+            grid[c].unshift(shiftingNewRow[c]);
+            grid[c].forEach((b, r) => { b.y = canvas.height - (r * GRID_SIZE + GRID_SIZE / 2); b.targetY = b.y; b.vy = 0; });
+        }
+        shiftingNewRow = [];
+        if (hitTop) checkPuzzleStatus(true);
+        else { refillEndlessQueue(); updateQueueUI(); gameState = 'ANIMATING'; }
+    }
+
+    function refillEndlessQueue() {
+        queue = []; for(let i=0; i<ENDLESS_ROUND_SIZE; i++) queue.push(generateRandomBallData());
+    }
+
+    function generateRandomBallData() {
+        const targetStr = document.getElementById('targetVal').innerText;
+        const pool = TARGET_CONFIGS[targetStr] || TARGET_CONFIGS["36"]; 
+        return { v: pool[Math.floor(Math.random() * pool.length)], c: Math.random() < 0.5 ? COLORS.RED : COLORS.BLUE };
+    }
+
+    canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect(); mouseX = e.clientX - rect.left;
+        if (gameState === 'READY' && pendingBall) pendingBall.x = mouseX;
+    });
+
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        mouseX = touch.clientX - rect.left;
+        if (gameState === 'READY' && pendingBall) pendingBall.x = mouseX;
+    }, { passive: false });
+
+    function checkMatches() {
+        highlightQueue = []; ballsToPopAtEnd = new Set();
+        const target = parseInt(document.getElementById('targetVal').innerText);
+        const foundSetIDs = new Set();
+        for (let c = 0; c < COLS; c++) {
+            for (let r = 0; r < grid[c].length; r++) {
+                const startBall = grid[c][r];
+                if (target % startBall.val !== 0) continue;
+                const findSets = (currentKeys, currentProd, neighbors) => {
+                    if (currentProd === target) {
+                        const id = [...currentKeys].sort().join('|');
+                        if (!foundSetIDs.has(id)) { foundSetIDs.add(id); highlightQueue.push([...currentKeys]); }
+                        return;
+                    }
+                    if (currentProd > target) return;
+                    neighbors.forEach((nKey, i) => {
+                        const [nc, nr] = nKey.split(',').map(Number);
+                        const nextProd = currentProd * grid[nc][nr].val;
+                        if (target % nextProd === 0) {
+                            const nextKeys = [...currentKeys, nKey];
+                            const nextNeighbors = neighbors.slice(i + 1);
+                            [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dc, dr]) => {
+                                let nnC = nc + dc, nnR = nr + dr, nnK = `${nnC},${nnR}`;
+                                if (nnC>=0 && nnC<COLS && nnR>=0 && nnR<grid[nnC].length && grid[nnC][nnR].color === startBall.color && !nextKeys.includes(nnK) && !nextNeighbors.includes(nnK)) nextNeighbors.push(nnK);
+                            });
+                            findSets(nextKeys, nextProd, nextNeighbors);
+                        }
+                    });
+                };
+                const initN = [];
+                [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dc, dr]) => {
+                    let nc = c + dc, nr = r + dr;
+                    if (nc>=0 && nc<COLS && nr>=0 && nr<grid[nc].length && grid[nc][nr].color === startBall.color) initN.push(`${nc},${nr}`);
+                });
+                findSets([`${c},${r}`], startBall.val, initN);
+            }
+        }
+        if (highlightQueue.length > 0) { gameState = 'HIGHLIGHTING'; highlightQueue.forEach(g => g.forEach(k => ballsToPopAtEnd.add(k))); runHighlights(); }
+        else { if (queue.length === 0 && !isEndless) setTimeout(checkPuzzleStatus, 500); else if (isEndless && queue.length === 0) initiateShift(); else { gameState = 'READY'; nextFromQueue(); } }
+    }
+
+    function runHighlights() {
+        if (highlightQueue.length === 0) { setTimeout(popBalls, 100); return; }
+        activeHighlight = highlightQueue.shift(); turnPops++; score += turnPops;
+        document.getElementById('scoreDisp').innerText = score;
+        let [c, r] = activeHighlight[0].split(',').map(Number);
+        floatingScores.push({ x: c*GRID_SIZE + GRID_SIZE/2, y: canvas.height - (r*GRID_SIZE + GRID_SIZE), val: turnPops, life: 50 });
+        setTimeout(runHighlights, 400);
+    }
+
+    function popBalls() {
+        activeHighlight = null;
+        for (let c = 0; c < COLS; c++) {
+            grid[c] = grid[c].filter((b, r) => !ballsToPopAtEnd.has(`${c},${r}`));
+            grid[c].forEach((b, r) => b.targetY = canvas.height - (r * GRID_SIZE + GRID_SIZE / 2));
+        }
+        gameState = 'ANIMATING';
+    }
+
+    function loadNextPuzzle() { changeLevel(1); }
+    function resetPuzzle() { initLevel(currentLevelIndex); }
+    function startEndless() { isEndless = true; refillEndlessQueue(); document.getElementById('overlay').style.display = 'none'; gameState = 'READY'; updateQueueUI(); nextFromQueue(); }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = GRID_COLOR; ctx.lineWidth = 1.5;
+        
+        // Change i*GRID_SIZE to start from 1 instead of 2
+        for(let i=0; i<=COLS; i++) { 
+            ctx.beginPath(); 
+            ctx.moveTo(i*GRID_SIZE, GRID_SIZE); // Changed from GRID_SIZE*2
+            ctx.lineTo(i*GRID_SIZE, canvas.height); 
+            ctx.stroke(); 
+        }
+    for(let i=1; i<=ROWS+1; i++) { // Changed i from 2 to 1
+        ctx.beginPath(); 
+        ctx.moveTo(0, i*GRID_SIZE); 
+        ctx.lineTo(canvas.width, i*GRID_SIZE); 
+        ctx.stroke(); 
+    }
+        if (activeHighlight) {
+            ctx.fillStyle = HIGHLIGHT_COLOR;
+            activeHighlight.forEach(k => { let [c, r] = k.split(',').map(Number); ctx.fillRect(c * GRID_SIZE + 1.5, canvas.height - (r + 1) * GRID_SIZE + 1.5, GRID_SIZE - 3, GRID_SIZE - 3); });
+        }
+        grid.forEach(col => col.forEach(b => drawBall(b.x, b.y, b.val, b.color)));
+        if (gameState === 'SHIFTING') shiftingNewRow.forEach(b => drawBall(b.x, b.y, b.val, b.color));
+        if (gameState === 'READY' && pendingBall) drawBall(pendingBall.x, pendingBall.y, pendingBall.val, pendingBall.color);
+        floatingScores.forEach(fs => {
+            ctx.save(); ctx.globalAlpha = fs.life/50; ctx.fillStyle = '#444'; ctx.font = '600 24px Outfit'; ctx.textAlign = 'center';
+            ctx.fillText('+' + fs.val, fs.x, fs.y); ctx.restore(); fs.y -= 1; fs.life--;
+        });
+        floatingScores = floatingScores.filter(f => f.life > 0); updatePhysics(); requestAnimationFrame(draw);
+    }
+
+    function updatePhysics() {
+        if (gameState === 'SHIFTING') {
+            const s = 4; shiftYOffset += s; grid.forEach(col => col.forEach(b => b.y -= s)); shiftingNewRow.forEach(b => b.y -= s);
+            if (shiftYOffset >= GRID_SIZE) finalizeShift(); return;
+        }
+        let moving = false;
+        grid.forEach(col => col.forEach(b => {
+            if (Math.abs(b.y - b.targetY) > 0.5) { b.vy = Math.min(b.vy + GRAVITY, TERMINAL_VEL); b.y += b.vy; if (b.y >= b.targetY) { b.y = b.targetY; b.vy = 0; } moving = true; }
+        }));
+        if (gameState === 'ANIMATING' && !moving) { gameState = 'SETTLING'; setTimeout(checkMatches, 150); }
+    }
+
+    function drawBall(x, y, v, c) {
+        ctx.beginPath(); ctx.arc(x, y, BALL_RADIUS, 0, Math.PI*2); ctx.fillStyle = c; ctx.fill();
+        ctx.fillStyle = 'white'; ctx.font = '600 24px Outfit'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(v, x, y);
+    }
+
+    // Responsive scaling (wrap instead of body transform)
+    const BASE_WIDTH = 420;
+    const BASE_HEIGHT = 760;
+
+    // create a scale wrapper once
+    let scaleWrap = document.getElementById('scale-wrap');
+    if (!scaleWrap) {
+        scaleWrap = document.createElement('div');
+        scaleWrap.id = 'scale-wrap';
+        scaleWrap.style.transformOrigin = 'top center';
+        while (document.body.firstChild) scaleWrap.appendChild(document.body.firstChild);
+        document.body.appendChild(scaleWrap);
+
+        // IMPORTANT: move full-screen overlays back out so they are NOT scaled
+        ['instructions-overlay','overlay'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) document.body.appendChild(el);
+        });
+    }
+
+    function applyResponsiveScale() {
+        const scale = Math.min(window.innerWidth / BASE_WIDTH, window.innerHeight / BASE_HEIGHT, 1);
+        scaleWrap.style.transform = `scale(${scale})`;
+    }
+
+    window.addEventListener('resize', applyResponsiveScale);
+    applyResponsiveScale();
+
+    initLevel(5); draw(); toggleInstructions(true);
+</script>
+</body>
+</html>

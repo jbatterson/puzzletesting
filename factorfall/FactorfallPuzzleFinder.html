@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Factor Drop: Puzzle Architect v8</title>
+    <style>
+        body { margin: 0; background-color: #f0f0f0; display: flex; font-family: 'Segoe UI', sans-serif; height: 100vh; overflow: hidden; }
+        #sidebar { width: 340px; background: #fff; border-right: 1px solid #ddd; padding: 20px; display: flex; flex-direction: column; gap: 12px; box-shadow: 2px 0 10px rgba(0,0,0,0.05); z-index: 10; }
+        #game-area { flex-grow: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; }
+        canvas { background: #fff; border: 2px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.1); cursor: crosshair; }
+        .control-group { display: flex; flex-direction: column; gap: 4px; }
+        label { font-size: 10px; font-weight: bold; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        select, input[type="range"] { width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Segoe UI', sans-serif; }
+        optgroup { font-style: normal; font-weight: bold; color: #333; }
+        .tray { display: flex; gap: 8px; margin-top: 15px; height: 50px; }
+        .tray-ball { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 14px; border: 3px solid transparent; transition: 0.3s; }
+        .tray-ball.active { border-color: #333; transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        button { padding: 10px; font-weight: bold; cursor: pointer; border: 2px solid #333; background: white; text-transform: uppercase; transition: 0.2s; font-size: 11px; }
+        button:hover:not(:disabled) { background: #333; color: white; }
+        button.export-btn { background: #2ecc71; border-color: #27ae60; color: white; margin-top: 5px; }
+        #log { font-size: 11px; color: #444; height: 80px; overflow-y: auto; border: 1px solid #eee; padding: 8px; background: #fafafa; line-height: 1.4; font-family: monospace; }
+        #export-ledger { flex-grow: 1; font-size: 10px; font-family: monospace; background: #222; color: #0f0; padding: 10px; overflow-y: auto; border-radius: 4px; white-space: pre-wrap; margin-top: 10px; border: 1px solid #000; }
+        .success { color: #2ecc71; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h2 style="margin:0; font-size: 18px;">Puzzle Architect v8</h2>
+    
+    <div class="control-group">
+        <label>Target Number</label>
+        <select id="targetSelect">
+            <optgroup label="aab form">
+                <option value="12">12</option><option value="18">18</option><option value="20">20</option>
+                <option value="28">28</option><option value="44">44</option><option value="45">45</option>
+                <option value="50">50</option><option value="63">63</option><option value="75">75</option>
+                <option value="98">98</option><option value="99">99</option>
+            </optgroup>
+            <optgroup label="aaab form">
+                <option value="24">24</option><option value="40">40</option><option value="54">54</option>
+                <option value="56">56</option><option value="88">88</option>
+            </optgroup>
+            <optgroup label="aabb form">
+                <option value="36" selected>36</option><option value="100">100</option>
+            </optgroup>
+            <optgroup label="abc form">
+                <option value="30">30</option><option value="42">42</option><option value="66">66</option><option value="70">70</option>
+            </optgroup>
+            <optgroup label="aabc form">
+                <option value="60">60</option><option value="84">84</option><option value="90">90</option>
+            </optgroup>
+        </select>
+    </div>
+
+    <div class="control-group">
+        <label>Density: <span id="ballVal">8</span></label>
+        <input type="range" id="ballSlider" min="4" max="12" value="8">
+    </div>
+
+    <div class="control-group">
+        <label>Max 1s: <span id="oneVal">2</span></label>
+        <input type="range" id="oneSlider" min="0" max="5" value="2">
+    </div>
+
+    <div class="control-group">
+        <label>Solution Length: <span id="moveVal">3</span></label>
+        <input type="range" id="moveSlider" min="1" max="5" value="3">
+    </div>
+
+    <div class="control-group">
+        <label>Required Cascades: <span id="cascadeVal">1</span></label>
+        <input type="range" id="cascadeSlider" min="0" max="4" value="1">
+    </div>
+
+    <button id="genBtn">Generate & Solve</button>
+    <button id="exportBtn" class="export-btn" style="display:none">Copy Triple Code</button>
+    <button id="resetBtn">Reset View</button>
+    
+    <div id="log">Ready.</div>
+    <div id="export-ledger">// Puzzles will appear here...</div>
+</div>
+
+<div id="game-area">
+    <div id="targetDisplay" style="font-size: 28px; font-weight: 300; margin-bottom: 10px; letter-spacing: 4px; color: #333;">TARGET: 36</div>
+    <canvas id="gameCanvas"></canvas>
+    <div class="tray" id="ballTray"></div>
+</div>
+
+<script>
+    const PRIME_MAP = {
+        "12": [2, 3], "18": [3, 2], "20": [2, 5], "28": [2, 7], "44": [2, 11], "45": [3, 5], 
+        "50": [5, 2], "63": [3, 7], "75": [5, 3], "98": [7, 2], "99": [3, 11],
+        "24": [2, 3], "40": [2, 5], "54": [3, 2], "56": [2, 7], "88": [2, 11],
+        "36": [2, 3], "100": [2, 5],
+        "30": [2, 3, 5], "42": [2, 3, 7], "66": [2, 3, 11], "70": [2, 5, 7],
+        "60": [2, 3, 5], "84": [2, 3, 7], "90": [3, 2, 5]
+    };
+    const GROUPS = {
+        "aab": ["12", "18", "20", "28", "44", "45", "50", "63", "75", "98", "99"],
+        "aaab": ["24", "40", "54", "56", "88"],
+        "aabb": ["36", "100"],
+        "abc": ["30", "42", "66", "70"],
+        "aabc": ["60", "84", "90"]
+    };
+    const TARGET_CONFIGS = {
+        "12": [1, 2, 2, 3, 4, 6], "18": [1, 3, 3, 2, 9, 6], "20": [1, 2, 2, 5, 4, 10], 
+        "28": [1, 2, 2, 7, 4, 14], "44": [1, 2, 2, 11, 4, 22], "45": [1, 3, 3, 5, 9, 15], 
+        "50": [1, 5, 5, 2, 25, 10], "63": [1, 3, 3, 7, 9, 21], "75": [1, 5, 5, 3, 25, 15], 
+        "98": [1, 7, 7, 2, 49, 14], "99": [1, 3, 3, 11, 9, 33],
+        "24": [1, 2, 3, 4, 6, 8, 12], "40": [1, 2, 5, 4, 10, 8, 20], "54": [1, 3, 2, 9, 6, 27, 18], 
+        "56": [1, 2, 7, 4, 14, 8, 28], "88": [1, 2, 11, 4, 22, 8, 44],
+        "36": [1, 2, 3, 4, 9, 6], "100": [1, 2, 5, 4, 25, 10],
+        "30": [1, 2, 3, 5, 6, 15, 10], "42": [1, 2, 3, 7, 6, 21, 14], "66": [1, 2, 3, 11, 6, 33, 22], 
+        "70": [1, 2, 5, 7, 10, 35, 14],
+        "60": [1, 2, 3, 5, 4, 6, 15], "84": [1, 2, 3, 7, 4, 6, 21], "90": [1, 3, 2, 5, 9, 6, 10]
+    };
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const COLS = 5, ROWS = 5, GRID_SIZE = 70, BALL_RADIUS = 28;
+    const COLORS = { RED: '#ff5f5f', BLUE: '#3273dc' };
+    canvas.width = COLS * GRID_SIZE; canvas.height = ROWS * GRID_SIZE;
+
+    let currentTarget = 36;
+    let grid = Array.from({ length: COLS }, () => []);
+    let moveQueue = [], originalState = null, movesMade = 0;
+    let gameState = 'IDLE', activeHighlight = null;
+
+    const ballSlider = document.getElementById('ballSlider');
+    const moveSlider = document.getElementById('moveSlider');
+    const cascadeSlider = document.getElementById('cascadeSlider');
+    const oneSlider = document.getElementById('oneSlider');
+    const targetSelect = document.getElementById('targetSelect');
+    const log = document.getElementById('log');
+
+    ballSlider.oninput = () => document.getElementById('ballVal').innerText = ballSlider.value;
+    moveSlider.oninput = () => document.getElementById('moveVal').innerText = moveSlider.value;
+    cascadeSlider.oninput = () => document.getElementById('cascadeVal').innerText = cascadeSlider.value;
+    oneSlider.oninput = () => document.getElementById('oneVal').innerText = oneSlider.value;
+    
+    targetSelect.onchange = () => {
+        currentTarget = parseInt(targetSelect.value);
+        document.getElementById('targetDisplay').innerText = `TARGET: ${currentTarget}`;
+    };
+
+    document.getElementById('genBtn').onclick = function() {
+        log.innerHTML = "> SEARCHING...";
+        document.getElementById('exportBtn').style.display = 'none';
+        this.disabled = true;
+        setTimeout(findPuzzle, 100);
+    };
+
+    function findPuzzle() {
+        const count = parseInt(ballSlider.value);
+        const moves = parseInt(moveSlider.value);
+        const reqCascades = parseInt(cascadeSlider.value);
+        const maxOnes = parseInt(oneSlider.value);
+        
+        const fullPool = TARGET_CONFIGS[currentTarget.toString()];
+        const nonOnePool = fullPool.filter(v => v !== 1);
+
+        let found = false, attempts = 0, startTime = Date.now();
+
+        while (!found && attempts < 20000) {
+            attempts++;
+            let testBoard = createRawBoard(count, nonOnePool, maxOnes);
+            if (findMatchesRaw(testBoard, currentTarget).size > 0) continue;
+            
+            let testQueue = createRawQueue(moves, fullPool);
+            let results = solveRaw(testBoard, testQueue, moves, currentTarget);
+            
+            if (results.solutions.length === 1 && results.maxCascades >= reqCascades) {
+                initGame(testBoard, testQueue); found = true;
+            }
+            if ((Date.now() - startTime) > 6000) break;
+        }
+
+        if (found) {
+            log.innerHTML = `<span class="success">> PUZZLE FOUND!</span><br>> Solvable in ${moves} move(s)<br>> Click columns to test.`;
+            document.getElementById('exportBtn').style.display = 'block';
+        } else {
+            log.innerHTML = `> SEARCH TIMED OUT<br>> Try lower Cascade count.`;
+        }
+        document.getElementById('genBtn').disabled = false;
+    }
+
+    function createRawBoard(c, nonOnePool, maxOnes) {
+        let b = Array.from({length:5},()=>[]);
+        let onesCount = 0;
+        for(let i=0; i<c; i++){
+            let col = Math.floor(Math.random()*5);
+            if(b[col].length < 5) {
+                let val;
+                if (onesCount < maxOnes && Math.random() < 0.15) {
+                    val = 1;
+                    onesCount++;
+                } else {
+                    val = nonOnePool[Math.floor(Math.random()*nonOnePool.length)];
+                }
+                b[col].push({val: val, color: Math.random()<0.5 ? COLORS.RED : COLORS.BLUE});
+            } else {
+                i--;
+            }
+        }
+        return b;
+    }
+
+    function createRawQueue(c, p) {
+        return Array.from({length:c},()=>({val:p[Math.floor(Math.random()*p.length)], color:Math.random()<0.5?COLORS.RED:COLORS.BLUE}));
+    }
+
+    // --- REMAINDER OF ENGINE (SOLVER, PHYSICS, DRAW) ---
+    //
+
+    document.getElementById('exportBtn').onclick = () => {
+        if (!originalState) return;
+        let groupKey = Object.keys(GROUPS).find(k => GROUPS[k].includes(currentTarget.toString()));
+        let alts = GROUPS[groupKey].filter(t => t !== currentTarget.toString()).sort(() => 0.5 - Math.random()).slice(0, 2);
+        
+        writePuzzleToLedger(currentTarget.toString(), originalState.board, originalState.queue, "Original");
+        if (alts[0]) writePuzzleToLedger(alts[0], [...originalState.board].reverse(), originalState.queue, "Mirrored");
+        if (alts[1]) {
+            let sB = originalState.board.map(c => c.map(b => ({...b, color: b.color === COLORS.RED ? COLORS.BLUE : COLORS.RED})));
+            let sQ = originalState.queue.map(b => ({...b, color: b.color === COLORS.RED ? COLORS.BLUE : COLORS.RED}));
+            writePuzzleToLedger(alts[1], sB, sQ, "Color-Swap");
+        }
+    };
+
+    function writePuzzleToLedger(tID, board, queue, label) {
+        const fmtC = (c) => c === COLORS.RED ? 'COLORS.RED' : 'COLORS.BLUE';
+        const tB = board.map(col => `[${col.map(b => `{v:${translateValue(b.val, currentTarget.toString(), tID)}, c:${fmtC(b.color)}}`).join(', ')}]`).join(', ');
+        const tQ = queue.map(b => `{v:${translateValue(b.val, currentTarget.toString(), tID)}, c:${fmtC(b.color)}}`).join(', ');
+        document.getElementById('export-ledger').innerText += `// ${label} (${tID})\n{ target: ${tID}, board: [${tB}], queue: [${tQ}] },\n`;
+    }
+
+    function translateValue(val, from, to) {
+        if (val === 1) return 1;
+        const fP = PRIME_MAP[from], tP = PRIME_MAP[to];
+        let id = [], temp = val, nv = 1;
+        fP.forEach(p => { let c = 0; while (temp % p === 0) { c++; temp /= p; } id.push(c); });
+        id.forEach((c, i) => nv *= Math.pow(tP[i], c));
+        return nv;
+    }
+
+    function initGame(b, q) {
+        grid = JSON.parse(JSON.stringify(b));
+        grid.forEach(col => col.forEach((ball, r) => {
+            ball.targetY = canvas.height - (r * GRID_SIZE + GRID_SIZE/2);
+            ball.y = ball.targetY; ball.vy = 0;
+        }));
+        moveQueue = JSON.parse(JSON.stringify(q));
+        originalState = { board: JSON.parse(JSON.stringify(b)), queue: JSON.parse(JSON.stringify(q)) };
+        movesMade = 0; gameState = 'READY'; updateUI();
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+        if (gameState !== 'READY' || movesMade >= moveQueue.length) return;
+        const rect = canvas.getBoundingClientRect();
+        const col = Math.floor((e.clientX - rect.left) / GRID_SIZE);
+        if (col >= 0 && col < COLS && grid[col].length < ROWS) {
+            let ball = JSON.parse(JSON.stringify(moveQueue[movesMade]));
+            ball.y = -GRID_SIZE; ball.vy = 0;
+            ball.targetY = canvas.height - (grid[col].length * GRID_SIZE + GRID_SIZE/2);
+            grid[col].push(ball); movesMade++; gameState = 'ANIMATING'; updateUI();
+        }
+    });
+
+    function checkMatches() {
+        let matchedKeys = findMatchesRaw(grid, currentTarget);
+        if (matchedKeys.size > 0) {
+            gameState = 'HIGHLIGHTING'; activeHighlight = Array.from(matchedKeys);
+            setTimeout(() => {
+                applyClearRaw(grid, matchedKeys);
+                grid.forEach(col => col.forEach((b, r) => { b.targetY = canvas.height - (r * GRID_SIZE + GRID_SIZE/2); }));
+                activeHighlight = null; gameState = 'ANIMATING';
+            }, 500);
+        } else {
+            gameState = 'READY';
+        }
+    }
+
+    function updatePhysics() {
+        let moving = false;
+        grid.forEach(col => col.forEach(b => {
+            if (Math.abs(b.y - b.targetY) > 0.5) {
+                b.vy += 0.8; b.y += b.vy;
+                if (b.y >= b.targetY) { b.y = b.targetY; b.vy = 0; }
+                moving = true;
+            }
+        }));
+        if (gameState === 'ANIMATING' && !moving) {
+            gameState = 'SETTLING'; setTimeout(checkMatches, 200);
+        }
+    }
+
+    function updateUI() {
+        const tray = document.getElementById('ballTray'); tray.innerHTML = '';
+        moveQueue.forEach((b, i) => {
+            const d = document.createElement('div'); d.className = 'tray-ball' + (i === movesMade ? ' active' : '');
+            d.style.backgroundColor = b.color; d.style.opacity = i < movesMade ? "0.1" : "1"; d.innerText = b.val; tray.appendChild(d);
+        });
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#eee';
+        for(let i=0; i<=COLS; i++) { ctx.beginPath(); ctx.moveTo(i*GRID_SIZE, 0); ctx.lineTo(i*GRID_SIZE, canvas.height); ctx.stroke(); }
+        if (activeHighlight) {
+            ctx.fillStyle = 'rgba(255, 215, 0, 0.4)';
+            activeHighlight.forEach(k => { let [c, r] = k.split(',').map(Number); ctx.fillRect(c * GRID_SIZE, canvas.height - (r+1) * GRID_SIZE, GRID_SIZE, GRID_SIZE); });
+        }
+        grid.forEach((col, c) => col.forEach(b => {
+            ctx.beginPath(); ctx.arc(c * GRID_SIZE + GRID_SIZE/2, b.y, BALL_RADIUS, 0, Math.PI*2);
+            ctx.fillStyle = b.color; ctx.fill();
+            ctx.fillStyle = 'white'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = 'bold 20px sans-serif'; ctx.fillText(b.val, c * GRID_SIZE + GRID_SIZE/2, b.y);
+        }));
+        updatePhysics(); requestAnimationFrame(draw);
+    }
+
+    function solveRaw(board, queue, max, target) {
+        if (queue.length === 0) return { solutions: board.every(c => c.length === 0) ? [1] : [], maxCascades: 0 };
+        let paths = [], maxC = 0;
+        for (let c = 0; c < 5; c++) {
+            if (board[c].length >= 5) continue;
+            let nb = JSON.parse(JSON.stringify(board));
+            nb[c].push(queue[0]);
+            let tc = 0, cl = true;
+            while (cl) {
+                let m = findMatchesRaw(nb, target);
+                if (m.size > 0) { tc++; applyClearRaw(nb, m); } else cl = false;
+            }
+            let res = solveRaw(nb, queue.slice(1), max, target);
+            if (res.solutions.length > 0) { paths.push(1); maxC = Math.max(maxC, tc, res.maxCascades); }
+            if (paths.length > 1) break;
+        }
+        return { solutions: paths, maxCascades: maxC };
+    }
+
+    function findMatchesRaw(board, target) {
+        let matched = new Set();
+        for (let c = 0; c < 5; c++) {
+            for (let r = 0; r < board[c].length; r++) {
+                const color = board[c][r].color;
+                function search(keys, prod, neighbors) {
+                    if (prod === target) { keys.forEach(k => matched.add(k)); return; }
+                    if (prod > target) return;
+                    neighbors.forEach((nK, idx) => {
+                        const [nc, nr] = nK.split(',').map(Number);
+                        if (target % (prod * board[nc][nr].val) === 0) {
+                            let nextN = neighbors.slice(idx+1);
+                            [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dc, dr]) => {
+                                let nnc = nc+dc, nnr = nr+dr, nnk = `${nnc},${nnr}`;
+                                if (nnc>=0 && nnc<5 && nnr>=0 && nnr<board[nnc].length && board[nnc][nnr].color === color && !keys.includes(nnk) && !nextN.includes(nnk)) nextN.push(nnk);
+                            });
+                            search([...keys, nK], prod * board[nc][nr].val, nextN);
+                        }
+                    });
+                }
+                let initN = [];
+                [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dc, dr]) => {
+                    let nc = c+dc, nr = r+dr;
+                    if (nc>=0 && nc<5 && nr>=0 && nr<board[nc].length && board[nc][nr].color === color) initN.push(`${nc},${nr}`);
+                });
+                if (target % board[c][r].val === 0) search([`${c},${r}`], board[c][r].val, initN);
+            }
+        }
+        return matched;
+    }
+
+    function applyClearRaw(b, k) { for (let c = 0; c < 5; c++) b[c] = b[c].filter((_, r) => !k.has(`${c},${r}`)); }
+
+    document.getElementById('resetBtn').onclick = () => { if (originalState) initGame(originalState.board, originalState.queue); };
+    draw();
+</script>
+</body>
+</html>

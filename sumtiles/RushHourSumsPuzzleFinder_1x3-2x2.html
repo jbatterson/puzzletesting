@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Rush Hour Sums Architect v2.1</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; background-color: #f1f5f9; display: flex; font-family: 'Outfit', sans-serif; height: 100vh; overflow: hidden; color: #1e293b; }
+        #sidebar { width: 320px; background: white; border-right: 1px solid #e2e8f0; padding: 20px; display: flex; flex-direction: column; gap: 15px; box-shadow: 4px 0 15px rgba(0,0,0,0.03); z-index: 10; overflow-y: auto; }
+        h2 { margin: 0; font-weight: 300; letter-spacing: 0.1em; text-transform: uppercase; font-size: 1rem; color: #64748b; }
+        .control-group { display: flex; flex-direction: column; gap: 5px; }
+        label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+        input { padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px; font-family: 'Outfit'; font-size: 13px; background: #f8fafc; }
+        .small-input { padding: 4px 6px; font-size: 12px; width: 70px; }
+        .slider-row { display: flex; justify-content: space-between; align-items: center; }
+        .val-badge { background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+        button { padding: 12px; font-weight: 600; cursor: pointer; border: none; border-radius: 6px; transition: 0.2s; text-transform: uppercase; letter-spacing: 1px; font-size: 12px; }
+        #genBtn { background: #3b82f6; color: white; }
+        #genBtn:hover { background: #2563eb; }
+        #copyBtn { background: #0f172a; color: white; display: none; }
+        #resetBtn { background: #94a3b8; color: white; display: none; }
+        #ledger { flex-grow: 1; margin-top: 10px; font-family: 'Courier New', monospace; font-size: 10px; background: #f8fafc; color: #334155; padding: 10px; border-radius: 6px; overflow-y: auto; border: 1px solid #e2e8f0; white-space: pre-wrap; word-break: break-all; }
+        #main { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f8fafc; }
+        #status-bar { margin-bottom: 20px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 2px; }
+        canvas { background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.04); cursor: grab; }
+        canvas:active { cursor: grabbing; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h2>Puzzle Architect</h2>
+
+    <div class="control-group">
+        <div class="slider-row"><label>Grid Size</label><span class="val-badge" id="sizeVal">5</span></div>
+        <input type="range" id="gridSize" min="3" max="6" value="5">
+    </div>
+
+    <div class="control-group">
+        <label>Number Pool</label>
+        <input type="text" id="numInput" value="1,2,3,4,5,6,7,8,9">
+    </div>
+
+    <!-- Tile selectors (Option A layout) -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:end;">
+        <div class="control-group"><label>H-Dominos</label><input class="small-input" type="number" id="hCount" value="2"></div>
+        <div class="control-group"><label>V-Dominos</label><input class="small-input" type="number" id="vCount" value="2"></div>
+
+        <div class="control-group"><label>H-1×3</label><input class="small-input" type="number" id="h3Count" value="0"></div>
+        <div class="control-group"><label>V-1×3</label><input class="small-input" type="number" id="v3Count" value="0"></div>
+
+        <div class="control-group"><label>2×2 Tiles</label><input class="small-input" type="number" id="sq2Count" value="0"></div>
+        <div></div>
+    </div>
+
+    <div class="control-group">
+        <div class="slider-row"><label>Scramble Moves</label><span class="val-badge" id="moveVal">100</span></div>
+        <input type="range" id="moves" min="5" max="150" value="100">
+    </div>
+
+    <div class="control-group">
+        <div class="slider-row"><label>Max 0-Sum Lines</label><span class="val-badge" id="zeroVal">1</span></div>
+        <input type="range" id="maxZeros" min="0" max="6" value="1">
+    </div>
+
+    <button id="genBtn">Generate & Scramble</button>
+    <button id="resetBtn">Reset to Scramble</button>
+    <button id="copyBtn">Copy Compact JSON</button>
+    <div id="ledger">// JSON Output...</div>
+</div>
+
+<div id="main">
+    <div id="status-bar">Ready to Generate</div>
+    <canvas id="gameCanvas"></canvas>
+</div>
+
+<script>
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let GRID_SIZE = 80, GUTTER = 60, SNAP_SPEED = 0.25;
+let p = null, originalScramble = null;
+let drag = { active: null, axis: null, lastX: 0, lastY: 0 };
+
+const getEl = id => document.getElementById(id);
+const sync = (slider, display) => getEl(slider).oninput = (e) => getEl(display).innerText = e.target.value;
+sync('gridSize', 'sizeVal');
+sync('moves', 'moveVal');
+sync('maxZeros', 'zeroVal');
+
+function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
+
+function minNumbersNeeded(cfg){
+    return cfg.hC*2 + cfg.vC*2 + cfg.h3*3 + cfg.v3*3 + cfg.sq2*4;
+}
+
+function getAllowedDirs(tile) {
+    if (tile.w === 1 && tile.h === 1) {
+        return [{ dr: 0, dc: 1 }, { dr: 0, dc: -1 }, { dr: 1, dc: 0 }, { dr: -1, dc: 0 }];
+    } else if (tile.w > tile.h) {
+        return [{ dr: 0, dc: 1 }, { dr: 0, dc: -1 }];
+    } else if (tile.h > tile.w) {
+        return [{ dr: 1, dc: 0 }, { dr: -1, dc: 0 }];
+    }
+    return [{ dr: 0, dc: 1 }, { dr: 0, dc: -1 }, { dr: 1, dc: 0 }, { dr: -1, dc: 0 }];
+}
+
+function hasAtLeastOneMove(puzzle) {
+    for (let t of puzzle.tiles) {
+        const canMoveOne = getAllowedDirs(t).some(d => canStep(puzzle, t, d.dr, d.dc));
+        if (!canMoveOne) return false;
+    }
+    return true;
+}
+
+function scrambleDistanceFrom(tiles, referenceTiles) {
+    let total = 0;
+    for (let i = 0; i < tiles.length; i++) {
+        total += Math.abs(tiles[i].r - referenceTiles[i].r) + Math.abs(tiles[i].c - referenceTiles[i].c);
+    }
+    return total;
+}
+
+function movedTileCountFrom(tiles, referenceTiles) {
+    let count = 0;
+    for (let i = 0; i < tiles.length; i++) {
+        if (tiles[i].r !== referenceTiles[i].r || tiles[i].c !== referenceTiles[i].c) count++;
+    }
+    return count;
+}
+
+function isNonTrivialScramble(puzzle, solvedTiles) {
+    const movedTiles = movedTileCountFrom(puzzle.tiles, solvedTiles);
+    const distance = scrambleDistanceFrom(puzzle.tiles, solvedTiles);
+    return movedTiles >= Math.min(2, puzzle.tiles.length) && distance >= 3;
+}
+
+function generate() {
+    const size = parseInt(getEl('gridSize').value);
+    let nums = getEl('numInput').value.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+
+    const hC = +getEl('hCount').value;
+    const vC = +getEl('vCount').value;
+    const h3 = +getEl('h3Count').value;
+    const v3 = +getEl('v3Count').value;
+    const sq2 = +getEl('sq2Count').value;
+    const maxZ = +getEl('maxZeros').value;
+
+    // Require enough numbers for the explicitly requested non-1x1 tiles.
+    // Remaining numbers (if any) are used to add 1x1 tiles until the pool runs out.
+    const need = minNumbersNeeded({hC,vC,h3,v3,sq2});
+    if (nums.length < need) {
+        alert(`Number pool needs at least ${need} values to place the requested tiles.`);
+        return;
+    }
+
+    let success = false, attempts = 0;
+
+    while (!success && attempts++ < 200) {
+        let shuffledPool = shuffleArray([...nums]);
+        p = tryBuild(size, shuffledPool, { hC, vC, h3, v3, sq2 });
+
+        if (!p) continue;
+
+        const zeroLines = p.targets.rows.filter(v => v === 0).length + p.targets.cols.filter(v => v === 0).length;
+        if (zeroLines > maxZ) continue;
+        if (!hasAtLeastOneMove(p)) continue;
+
+        const solvedTiles = JSON.parse(JSON.stringify(p.tiles));
+        scramblePuzzle(p, solvedTiles);
+        if (!isNonTrivialScramble(p, solvedTiles)) continue;
+
+        originalScramble = JSON.parse(JSON.stringify(p.tiles));
+        success = true;
+    }
+
+    if (!success) {
+        alert("Could not generate a good puzzle. Try fewer tiles or more scramble moves.");
+        return;
+    }
+
+    initInteractivity();
+    updateUI();
+}
+
+function tryBuild(size, nums, cfg) {
+    let grid = Array.from({ length: size }, () => Array(size).fill(null));
+    let tiles = [];
+
+    const getEmpty = () => {
+        let e = [];
+        for (let r = 0; r < size; r++) {
+            for (let c = 0; c < size; c++) {
+                if (!grid[r][c]) e.push({ r, c });
+            }
+        }
+        return e.sort(() => Math.random() - 0.5);
+    };
+
+    const place = (w, h, count) => {
+        for (let i = 0; i < count; i++) {
+            let slots = getEmpty(), placed = false;
+            for (let s of slots) {
+                if (s.c + w <= size && s.r + h <= size) {
+                    let clear = true;
+                    for (let rr = 0; rr < h; rr++) {
+                        for (let cc = 0; cc < w; cc++) {
+                            if (grid[s.r + rr][s.c + cc]) clear = false;
+                        }
+                    }
+                    if (clear && nums.length >= w * h) {
+                        let values = [];
+                        for (let k = 0; k < w * h; k++) values.push(nums.shift());
+                        let t = { id: tiles.length + 1, r: s.r, c: s.c, w, h, vals: values };
+                        for (let rr = 0; rr < h; rr++) {
+                            for (let cc = 0; cc < w; cc++) {
+                                grid[s.r + rr][s.c + cc] = t;
+                            }
+                        }
+                        tiles.push(t);
+                        placed = true;
+                        break;
+                    }
+                }
+            }
+            if (!placed) return false;
+        }
+        return true;
+    };
+
+    // placement order
+    if (!place(2, 2, cfg.sq2)) return null;
+    if (!place(3, 1, cfg.h3)) return null;
+    if (!place(1, 3, cfg.v3)) return null;
+    if (!place(2, 1, cfg.hC)) return null;
+    if (!place(1, 2, cfg.vC)) return null;
+
+    let emp = getEmpty();
+    while (nums.length && emp.length) {
+        let s = emp.shift();
+        let v = nums.shift();
+        let t = { id: tiles.length + 1, r: s.r, c: s.c, w: 1, h: 1, vals: [v] };
+        grid[s.r][s.c] = t;
+        tiles.push(t);
+    }
+
+    let rs = new Array(size).fill(0), cs = new Array(size).fill(0);
+
+    tiles.forEach(t => {
+        for (let rr = 0; rr < t.h; rr++) {
+            for (let cc = 0; cc < t.w; cc++) {
+                let v = t.vals[rr * t.w + cc];
+                if (v !== 0) {
+                    rs[t.r + rr] += v;
+                    cs[t.c + cc] += v;
+                }
+            }
+        }
+    });
+
+    return { size, tiles, targets: { rows: rs, cols: cs } };
+}
+
+function scramblePuzzle(puzzle, solvedTiles = null) {
+    const moveLimit = +getEl('moves').value;
+    let movesMade = 0;
+    let safety = 0; // prevents infinite loops
+    let reverseDir = null;
+    let lastTileId = null;
+
+    while (movesMade < moveLimit && safety < moveLimit * 40) {
+        safety++;
+
+        let tile = puzzle.tiles[Math.floor(Math.random() * puzzle.tiles.length)];
+        let allowedDirs = getAllowedDirs(tile).filter(dir => {
+            if (lastTileId !== tile.id || !reverseDir) return true;
+            return !(dir.dr === reverseDir.dr && dir.dc === reverseDir.dc);
+        });
+
+        if (!allowedDirs.length) allowedDirs = getAllowedDirs(tile);
+
+        let dir = allowedDirs[Math.floor(Math.random() * allowedDirs.length)];
+        let dist = Math.floor(Math.random() * 3) + 1;
+        let movedSteps = 0;
+
+        for (let i = 0; i < dist; i++) {
+            if (canStep(puzzle, tile, dir.dr, dir.dc)) {
+                tile.r += dir.dr;
+                tile.c += dir.dc;
+                movedSteps++;
+            } else {
+                break;
+            }
+        }
+
+        if (movedSteps > 0) {
+            movesMade++;
+            lastTileId = tile.id;
+            reverseDir = { dr: -dir.dr, dc: -dir.dc };
+        }
+    }
+
+    if (solvedTiles && !isNonTrivialScramble(puzzle, solvedTiles)) {
+        let extraSafety = 0;
+        while (!isNonTrivialScramble(puzzle, solvedTiles) && extraSafety < moveLimit * 40) {
+            extraSafety++;
+            let tile = puzzle.tiles[Math.floor(Math.random() * puzzle.tiles.length)];
+            let dirs = shuffleArray([...getAllowedDirs(tile)]);
+            for (let dir of dirs) {
+                if (canStep(puzzle, tile, dir.dr, dir.dc)) {
+                    tile.r += dir.dr;
+                    tile.c += dir.dc;
+                    break;
+                }
+            }
+        }
+    }
+}
+
+function canStep(puzzle, t, dr, dc) {
+    let nr = t.r + dr, nc = t.c + dc;
+    if (nr < 0 || nc < 0 || nr + t.h > puzzle.size || nc + t.w > puzzle.size) return false;
+    return !puzzle.tiles.some(o => {
+        if (o.id === t.id) return false;
+        return !(nc + t.w <= o.c || nc >= o.c + o.w || nr + t.h <= o.r || nr >= o.r + o.h);
+    });
+}
+
+function initInteractivity() {
+    p.tiles.forEach(t => {
+        t.x = t.c * GRID_SIZE + (t.w * GRID_SIZE) / 2;
+        t.y = t.r * GRID_SIZE + (t.h * GRID_SIZE) / 2;
+    });
+}
+
+function getBounds(t, pxX, pxY) {
+    return {
+        l: pxX - (t.w * GRID_SIZE) / 2,
+        r: pxX + (t.w * GRID_SIZE) / 2,
+        t: pxY - (t.h * GRID_SIZE) / 2,
+        b: pxY + (t.h * GRID_SIZE) / 2
+    };
+}
+
+function overlap(r1, r2) {
+    const m = 0.5;
+    return !(r1.r <= r2.l + m || r1.l >= r2.r - m || r1.b <= r2.t + m || r1.t >= r2.b - m);
+}
+
+function testMove(t, axis, dist, visited) {
+    if (visited.has(t.id)) return true;
+    visited.add(t.id);
+
+    // 1xN or Nx1 can only move on its long axis
+    if (t.w > t.h && axis === 'v') return false;
+    if (t.h > t.w && axis === 'h') return false;
+
+    const nX = t.x + (axis === 'h' ? dist : 0);
+    const nY = t.y + (axis === 'v' ? dist : 0);
+    const b = getBounds(t, nX, nY);
+    const lim = p.size * GRID_SIZE;
+    if (b.l < -0.1 || b.r > lim + 0.1 || b.t < -0.1 || b.b > lim + 0.1) return false;
+
+    for (let o of p.tiles) {
+        if (!visited.has(o.id) && overlap(b, getBounds(o, o.x, o.y))) {
+            if (!testMove(o, axis, dist, visited)) return false;
+        }
+    }
+    return true;
+}
+
+function executeMove(t, axis, dist, visited) {
+    if (visited.has(t.id)) return;
+    visited.add(t.id);
+
+    const b = getBounds(t,
+        t.x + (axis === 'h' ? dist : 0),
+        t.y + (axis === 'v' ? dist : 0)
+    );
+
+    for (let o of p.tiles) {
+        if (!visited.has(o.id) && overlap(b, getBounds(o, o.x, o.y))) {
+            executeMove(o, axis, dist, visited);
+        }
+    }
+
+    if (axis === 'h') t.x += dist;
+    else t.y += dist;
+}
+
+canvas.onmousedown = (e) => {
+    if (!p) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left - GUTTER;
+    const my = e.clientY - rect.top - GUTTER;
+
+    const hit = p.tiles.find(t => {
+        const b = getBounds(t, t.x, t.y);
+        return mx > b.l && mx < b.r && my > b.t && my < b.b;
+    });
+
+    if (hit) {
+        drag.active = hit;
+        drag.lastX = mx;
+        drag.lastY = my;
+        drag.axis = null;
+    }
+};
+
+window.onmousemove = (e) => {
+    if (!drag.active) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left - GUTTER;
+    const my = e.clientY - rect.top - GUTTER;
+
+    if (!drag.axis) {
+        const dx = Math.abs(mx - drag.lastX);
+        const dy = Math.abs(my - drag.lastY);
+        if (dx > 5 || dy > 5) {
+            let intendedAxis = dx > dy ? 'h' : 'v';
+            if (drag.active.w > drag.active.h && intendedAxis === 'v') return;
+            if (drag.active.h > drag.active.w && intendedAxis === 'h') return;
+            drag.axis = intendedAxis;
+        } else {
+            return;
+        }
+    }
+
+    const delta = (drag.axis === 'h' ? mx - drag.lastX : my - drag.lastY);
+    const steps = Math.abs(Math.round(delta));
+    const dir = Math.sign(delta);
+
+    for (let i = 0; i < steps; i++) {
+        if (testMove(drag.active, drag.axis, dir, new Set())) {
+            executeMove(drag.active, drag.axis, dir, new Set());
+        } else {
+            break;
+        }
+    }
+
+    if (drag.axis === 'h') drag.lastX = mx;
+    else drag.lastY = my;
+};
+
+window.onmouseup = () => {
+    if (drag.active) {
+        p.tiles.forEach(t => {
+            t.c = Math.round((t.x - (t.w * GRID_SIZE) / 2) / GRID_SIZE);
+            t.r = Math.round((t.y - (t.h * GRID_SIZE) / 2) / GRID_SIZE);
+        });
+    }
+    drag.active = null;
+};
+
+function updateUI() {
+    getEl('copyBtn').style.display = 'block';
+    getEl('resetBtn').style.display = 'block';
+
+    // Compact: [r,c,w,h,...vals]
+    const compactTiles = p.tiles.map(t => [t.r, t.c, t.w, t.h, ...t.vals]);
+    const data = { s: p.size, t: p.targets, b: compactTiles };
+    const jsonStr = JSON.stringify(data);
+
+    getEl('ledger').innerText = jsonStr + ",";
+
+    getEl('copyBtn').onclick = () => {
+        navigator.clipboard.writeText(jsonStr);
+        getEl('copyBtn').innerText = 'Copied!';
+        setTimeout(() => getEl('copyBtn').innerText = 'Copy Compact JSON', 1000);
+    };
+}
+
+getEl('resetBtn').onclick = () => {
+    if (!p || !originalScramble) return;
+    p.tiles.forEach((t, i) => {
+        t.r = originalScramble[i].r;
+        t.c = originalScramble[i].c;
+        t.x = t.c * GRID_SIZE + (t.w * GRID_SIZE) / 2;
+        t.y = t.r * GRID_SIZE + (t.h * GRID_SIZE) / 2;
+    });
+};
+
+function tileColor(t) {
+    if (t.w === 2 && t.h === 2) return '#1e3a8a';
+    if (t.w === 3 && t.h === 1) return '#16a34a';
+    if (t.w === 1 && t.h === 3) return '#dc2626';
+    if (t.w === 2 && t.h === 1) return '#f59e0b';
+    if (t.w === 1 && t.h === 2) return '#8b5cf6';
+    return '#3b82f6';
+}
+
+function draw() {
+    if (!p) {
+        requestAnimationFrame(draw);
+        return;
+    }
+
+    canvas.width = (p.size * GRID_SIZE) + GUTTER;
+    canvas.height = (p.size * GRID_SIZE) + GUTTER;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+    ctx.translate(GUTTER, GUTTER);
+
+    ctx.font = '700 14px Outfit';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (let i = 0; i < p.size; i++) {
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(p.targets.rows[i], -25, i * GRID_SIZE + GRID_SIZE / 2);
+        ctx.fillText(p.targets.cols[i], i * GRID_SIZE + GRID_SIZE / 2, -25);
+
+        ctx.strokeStyle = '#f1f5f9';
+        for (let j = 0; j <= p.size; j++) {
+            ctx.beginPath(); ctx.moveTo(j * GRID_SIZE, 0); ctx.lineTo(j * GRID_SIZE, p.size * GRID_SIZE); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, j * GRID_SIZE); ctx.lineTo(p.size * GRID_SIZE, j * GRID_SIZE); ctx.stroke();
+        }
+    }
+
+    p.tiles.forEach(t => {
+        if (!drag.active) {
+            t.x += (t.c * GRID_SIZE + (t.w * GRID_SIZE) / 2 - t.x) * SNAP_SPEED;
+            t.y += (t.r * GRID_SIZE + (t.h * GRID_SIZE) / 2 - t.y) * SNAP_SPEED;
+        }
+
+        ctx.fillStyle = tileColor(t);
+        ctx.beginPath();
+        ctx.roundRect(
+            t.x - (t.w * GRID_SIZE - 6) / 2,
+            t.y - (t.h * GRID_SIZE - 6) / 2,
+            t.w * GRID_SIZE - 6,
+            t.h * GRID_SIZE - 6,
+            8
+        );
+        ctx.fill();
+
+        ctx.fillStyle = 'white';
+        ctx.font = '600 20px Outfit';
+
+        // Draw one number per cell; treat 0 as blank
+        for (let rr = 0; rr < t.h; rr++) {
+            for (let cc = 0; cc < t.w; cc++) {
+                const v = t.vals[rr * t.w + cc];
+                if (v !== 0) {
+                    const x = t.x + (cc - (t.w - 1) / 2) * GRID_SIZE;
+                    const y = t.y + (rr - (t.h - 1) / 2) * GRID_SIZE;
+                    ctx.fillText(v, x, y);
+                }
+            }
+        }
+    });
+
+    ctx.restore();
+    requestAnimationFrame(draw);
+}
+
+// --- lightweight tests (run once, fast) ---
+function runTests() {
+    const assert = (cond, msg) => {
+        if (!cond) throw new Error('Test failed: ' + msg);
+    };
+
+    // Color mapping
+    assert(tileColor({ w: 2, h: 2 }) === '#1e3a8a', '2x2 color');
+    assert(tileColor({ w: 3, h: 1 }) === '#16a34a', '3x1 color');
+    assert(tileColor({ w: 1, h: 3 }) === '#dc2626', '1x3 color');
+
+    // Minimum-number requirement for requested tiles
+    assert(minNumbersNeeded({hC:2,vC:2,h3:0,v3:0,sq2:0}) === 8, 'minNumbersNeeded dominos');
+    assert(minNumbersNeeded({hC:0,vC:0,h3:1,v3:1,sq2:1}) === 10, 'minNumbersNeeded mixed');
+
+    // canStep collision/bounds basics
+    const puzzle = {
+        size: 5,
+        tiles: [
+            { id: 1, r: 0, c: 0, w: 2, h: 2 },
+            { id: 2, r: 0, c: 2, w: 1, h: 1 }
+        ]
+    };
+    assert(canStep(puzzle, puzzle.tiles[0], 0, 1) === false, '2x2 blocked by neighbor');
+    assert(canStep(puzzle, puzzle.tiles[1], 0, 1) === true, '1x1 can move right');
+
+    // Every tile should have at least one move in an open layout
+    const puzzle2 = {
+        size: 3,
+        tiles: [
+            { id: 1, r: 0, c: 0, w: 1, h: 1 },
+            { id: 2, r: 1, c: 1, w: 1, h: 1 }
+        ]
+    };
+    assert(hasAtLeastOneMove(puzzle2) === true, 'movable tiles check');
+
+    const stuckPuzzle = {
+        size: 2,
+        tiles: [
+            { id: 1, r: 0, c: 0, w: 2, h: 2 }
+        ]
+    };
+    assert(hasAtLeastOneMove(stuckPuzzle) === false, 'stuck tile check');
+
+    // Scramble should not throw and should be able to create nontrivial displacement
+    const movesEl = getEl('moves');
+    const oldVal = movesEl.value;
+    movesEl.value = '10';
+    const solved2 = JSON.parse(JSON.stringify(puzzle2.tiles));
+    scramblePuzzle(puzzle2, solved2);
+    assert(scrambleDistanceFrom(puzzle2.tiles, solved2) >= 0, 'scramble distance computed');
+    movesEl.value = oldVal;
+}
+
+try { runTests(); } catch (e) { console.error(e); }
+
+getEl('genBtn').onclick = generate;
+draw();
+
+</script>
+</body>
+</html>

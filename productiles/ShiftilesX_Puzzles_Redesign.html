@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Productiles</title>
+
+  <!-- Match Scurry stack -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;900&display=swap" rel="stylesheet">
+
+  <style>
+    body { font-family: 'Outfit', sans-serif; background:#ffffff; color:#000; overflow-x:hidden; padding-top:20px; }
+
+    .game-container { max-width:450px; margin:0 auto; position:relative; padding:0 15px; }
+
+    .header-row { display:flex; align-items:center; justify-content:center; position:relative; width:100%; margin-bottom:1.5rem; }
+
+    .title { letter-spacing:0.15em; color:#000; font-weight:900; text-transform:uppercase; font-size:2.25rem; margin:0; }
+
+    #help-toggle {
+      position:absolute; right:0; width:32px; height:32px; border-radius:50%;
+      border:2px solid #000; display:flex; align-items:center; justify-content:center;
+      cursor:pointer; color:#000; font-weight:900; font-size:18px; transition:all .2s;
+    }
+    #help-toggle:hover { background:#000; color:#fff; }
+
+    
+    .board-wrapper {
+      display:grid;
+      grid-template-columns:60px auto;
+      grid-template-rows:60px auto;
+      gap:0;
+      margin:0 auto;
+      width:max-content;
+      transform: translateX(-32px); /* optical center: half cell */
+    }
+
+    .col-targets, .row-targets { font-weight:900; font-size:16px; color:#000; }
+
+    .col-targets { grid-column:2; display:flex; justify-content:space-around; align-items:center; }
+    .row-targets { grid-row:2; display:flex; flex-direction:column; justify-content:space-around; align-items:center; width:60px; }
+
+    #canvas-wrapper {
+      grid-column:2; grid-row:2; position:relative; background:#fff;
+      box-shadow:0 0 0 2px #000; border-radius:2px;
+    }
+
+    canvas { background:#fff; cursor:grab; display:block; touch-action:none; }
+    canvas:active { cursor:grabbing; }
+
+    .target { transition:color .25s ease, transform .25s ease; text-align:center; width:100%; }
+    .target.solved { color:#22c55e; }
+
+    .nav-arrow {
+      cursor: pointer;
+      color: #000;
+      transition: all 0.2s;
+      font-size: 28px;
+      line-height: 1;
+      padding: 0 15px;
+      font-weight: 600;
+      user-select: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 44px;
+    }
+    .nav-arrow:hover:not(.disabled) {
+      transform: scale(1.3);
+    }
+    .nav-arrow.disabled {
+      color: #d1d5db; /* Tailwind gray-300 used in Scurry */
+      cursor: default;
+      transform: none !important;
+    }
+    .nav-arrow:hover { transform:scale(1.25); }
+
+    .btn-action {
+      border:2px solid #000; font-weight:600; letter-spacing:.05em;
+      transition:all .1s; padding:1rem 0; text-transform:uppercase;
+    }
+    .btn-action:hover:not(:disabled) { background:#000; color:#fff; }
+    .btn-primary { background:#000; color:#fff; border-color:#000; }
+    .btn-action:disabled { opacity:.25; cursor:not-allowed; }
+
+    #instructions-overlay { backdrop-filter: blur(8px); background: rgba(255,255,255,0.98); }
+  </style>
+</head>
+<body>
+
+  <div class="flex flex-col items-center game-container">
+
+    <div class="header-row">
+      <h1 class="title">Productiles</h1>
+      <div id="help-toggle" onclick="toggleHelp(true)">?</div>
+    </div>
+
+    <div class="flex items-center justify-between w-full max-w-[220px] py-2 border-y-2 border-black mb-6">
+      <div id="prevBtn" class="nav-arrow">←</div>
+      <div class="text-center">
+        <div id="modeLabel" class="text-[10px] uppercase tracking-[0.2em] font-black">Puzzle</div>
+        <div id="lvlNum" class="text-xl font-black leading-tight">1</div>
+      </div>
+      <div id="nextBtn" class="nav-arrow">→</div>
+    </div>
+
+    
+
+    <div class="board-wrapper">
+      <div id="colTargets" class="col-targets"></div>
+      <div id="rowTargets" class="row-targets"></div>
+      <div id="canvas-wrapper">
+        <canvas id="gameCanvas"></canvas>
+      </div>
+    </div>
+
+    <div class="mt-6 flex flex-col gap-3 w-full px-4 mb-6">
+      <div class="flex flex-wrap gap-3">
+        <button id="undoBtn" class="btn-action flex-1 min-w-[120px] text-xs" disabled>Undo</button>
+        <button id="resetBtn" class="btn-action flex-1 min-w-[120px] text-xs">Reset</button>
+        <button id="solveNextBtn" class="hidden btn-action flex-1 min-w-[140px] text-xs">Next Puzzle</button>
+      </div>
+
+      <div id="skipTutorialWrap" class="hidden">
+        <button id="skipTutorialBtn" class="btn-action w-full text-xs">Skip Tutorial</button>
+      </div>
+
+      <div id="tutorialEnd" class="hidden flex flex-col gap-3">
+        <button id="restartTutorialBtn" class="btn-action w-full text-xs">Restart Tutorial</button>
+        <button id="playPuzzlesBtn" class="w-full bg-black text-white py-5 rounded-sm text-sm font-black uppercase tracking-widest shadow-xl">Play Puzzles</button>
+      </div>
+    </div>
+
+  </div>
+
+  </div>
+
+  <div id="instructions-overlay" class="fixed inset-0 hidden flex-col items-center z-[100] p-10 overflow-y-auto">
+    <div class="max-w-[420px] text-left relative">
+      <div class="absolute -top-5 -right-5 text-2xl font-light text-gray-400 cursor-pointer p-2 hover:text-black" onclick="toggleHelp(false)">✕</div>
+      <h2 class="text-2xl font-black tracking-widest uppercase text-center mb-8">How to Play</h2>
+      <p class="text-sm leading-relaxed text-gray-700 mb-8">
+        Slide the factor tiles so the <b>product</b> of the numbers in every row and column matches its target.
+        <br>
+        Square tiles can slide in all four directions.Long rectangles only slide the long way.
+      </p>
+      <div class="flex flex-col gap-3">
+        <button id="playTutorialBtn" class="w-full border-2 border-black py-5 rounded-sm text-xs font-black uppercase tracking-widest transition-all">Tutorial Puzzles</button>
+        <button id="playPuzzlesFromModalBtn" class="w-full bg-black text-white py-5 rounded-sm text-xs font-black uppercase tracking-widest shadow-xl">Play Puzzles</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ================= CONFIG =================
+  const TUTORIAL_COUNT = 10;
+
+    const PUZZLES = [
+        {"s":3,"t":{"rows":[20,18,14],"cols":[28,6,30]},"b":[[2,0,2,1,7,2],[1,2,1,2,5,6],[1,1,1,1,4],[1,0,1,1,3]]},
+        {"s":3,"t":{"rows":[14,18,20],"cols":[42,15,8]},"b":[[1,1,2,1,6,3],[2,1,2,1,5,4],[2,0,1,1,7],[0,1,1,1,2]]},
+        {"s":3,"t":{"rows":[28,12,15],"cols":[14,20,18]},"b":[[0,2,1,2,6,3],[0,0,1,2,7,2],[2,1,1,1,4],[2,2,1,1,5]]},
+
+        {"s":4,"t":{"rows":[16,15,42,36],"cols":[30,24,28,18]},"b":[[0,2,1,3,0,7,4],[1,1,1,3,8,3,0],[0,0,1,3,0,5,6],[0,3,1,1,2],[1,3,1,1,9]]},
+        {"s":4,"t":{"rows":[16,18,28,5],"cols":[7,12,40,12]},"b":[[0,0,3,1,0,8,2],[2,0,3,1,7,4,0],[3,1,3,1,1,0,5],[1,2,1,1,3],[2,3,1,1,6]]},
+        {"s":4,"t":{"rows":[15,28,48,2],"cols":[40,12,4,21]},"b":[[2,0,1,2,8,0],[1,1,1,2,6,2],[2,2,1,2,0,4],[0,3,1,2,3,7],[0,0,1,1,5],[3,3,1,1,1]]},
+        {"s":4,"t":{"rows":[48,2,20,21],"cols":[8,6,35,24]},"b":[[3,1,2,1,3,7],[2,3,1,2,0,4],[1,0,1,2,8,1],[1,2,1,1,6],[1,3,1,1,2],[1,1,1,1,5]]},
+        {"s":4,"t":{"rows":[42,72,20,6],"cols":[21,10,32,54]},"b":[[0,1,2,1,7,0],[2,0,2,1,5,4],[1,3,1,2,6,9],[3,3,1,1,8],[3,2,1,1,3],[3,1,1,1,2]]},
+        {"s":4,"t":{"rows":[14,40,12,54],"cols":[16,18,35,36]},"b":[[0,2,2,1,7,0],[2,1,1,2,3,6],[2,0,1,2,8,0],[0,1,1,1,2],[1,1,1,1,5],[3,3,1,1,4],[2,2,1,1,9]]},
+        {"s":4,"t":{"rows":[40,24,14,3],"cols":[6,20,6,56]},"b":[[3,1,2,1,0,1],[2,1,2,1,0,7],[1,0,1,2,2,3],[0,2,1,1,5],[1,3,1,1,8],[0,0,1,1,4],[1,2,1,1,6]]},
+
+        //easy
+        {"s":3,"t":{"rows":[20,18,14],"cols":[35,12,12]},"b":[[1,2,1,2,6,2],[2,0,1,1,5],[0,1,1,1,4],[1,1,1,1,3],[1,0,1,1,7]]},
+        {"s":3,"t":{"rows":[18,8,35],"cols":[6,20,42]},"b":[[0,0,1,2,3,2],[2,0,1,1,6],[2,1,1,1,4],[0,1,1,1,5],[2,2,1,1,7]]},
+        {"s":3,"t":{"rows":[15,14,24],"cols":[30,21,8]},"b":[[0,2,1,2,2,4],[0,1,1,1,5],[1,0,1,1,3],[0,0,1,1,7],[2,1,1,1,6]]},
+        {"s":3,"t":{"rows":[35,12,12],"cols":[6,30,28]},"b":[[0,0,1,2,2,3],[0,1,1,1,5],[2,2,1,1,7],[1,1,1,1,6],[2,0,1,1,4]]},
+        {"s":3,"t":{"rows":[21,30,8],"cols":[18,10,28]},"b":[[0,1,1,2,5,2],[0,2,1,1,3],[1,2,1,1,7],[1,0,1,1,6],[2,1,1,1,4]]},
+        {"s":3,"t":{"rows":[21,10,24],"cols":[8,35,18]},"b":[[0,1,2,1,7,3],[1,1,1,1,2],[2,0,1,1,5],[1,2,1,1,4],[1,0,1,1,6]]},
+        {"s":3,"t":{"rows":[18,28,10],"cols":[21,20,12]},"b":[[2,0,2,1,5,2],[0,0,1,1,3],[1,1,1,1,6],[1,0,1,1,7],[0,2,1,1,4]]},
+        {"s":3,"t":{"rows":[28,10,18],"cols":[42,20,6]},"b":[[0,0,2,1,7,4],[2,2,1,1,5],[0,2,1,1,2],[2,1,1,1,6],[1,0,1,1,3]]},
+        {"s":3,"t":{"rows":[21,8,30],"cols":[35,24,6]},"b":[[1,1,2,1,4,2],[2,0,1,1,7],[1,0,1,1,3],[2,1,1,1,5],[2,2,1,1,6]]},
+        {"s":3,"t":{"rows":[12,30,14],"cols":[12,20,21]},"b":[[0,0,2,1,4,3],[1,2,1,1,6],[1,1,1,1,5],[2,2,1,1,2],[2,0,1,1,7]]},
+
+        {"s":3,"t":{"rows":[32,54,35],"cols":[30,72,28]},"b":[[0,0,2,1,8,4],[2,0,1,1,6],[0,2,1,1,9],[1,0,1,1,5],[2,2,1,1,7]]},
+        {"s":3,"t":{"rows":[45,56,24],"cols":[20,42,72]},"b":[[2,0,2,1,4,6],[0,2,1,1,5],[1,1,1,1,9],[0,0,1,1,7],[2,2,1,1,8]]},
+        {"s":3,"t":{"rows":[20,72,42],"cols":[48,45,28]},"b":[[0,1,2,1,5,4],[2,1,1,1,8],[1,1,1,1,9],[2,0,1,1,6],[1,2,1,1,7]]},
+        {"s":3,"t":{"rows":[42,36,40],"cols":[54,20,56]},"b":[[2,0,2,1,5,8],[0,0,1,1,6],[2,2,1,1,7],[1,0,1,1,9],[1,1,1,1,4]]},
+        {"s":3,"t":{"rows":[32,54,35],"cols":[48,63,20]},"b":[[1,0,2,1,6,9],[1,2,1,1,8],[2,2,1,1,4],[2,0,1,1,7],[2,1,1,1,5]]},
+        {"s":3,"t":{"rows":[32,54,35],"cols":[48,63,20]},"b":[[1,0,2,1,6,9],[1,2,1,1,8],[2,2,1,1,4],[2,0,1,1,7],[2,1,1,1,5]]},
+        {"s":3,"t":{"rows":[56,54,20],"cols":[35,48,36]},"b":[[1,2,1,2,9,4],[0,1,1,1,7],[0,2,1,1,8],[2,1,1,1,6],[2,0,1,1,5]]},
+        {"s":3,"t":{"rows":[72,28,30],"cols":[48,36,35]},"b":[[0,2,1,2,7,5],[2,2,1,1,8],[0,1,1,1,9],[0,0,1,1,4],[1,1,1,1,6]]},
+        {"s":3,"t":{"rows":[40,36,42],"cols":[28,72,30]},"b":[[1,0,1,2,4,7],[0,2,1,1,8],[0,0,1,1,5],[1,1,1,1,9],[2,2,1,1,6]]},
+        {"s":3,"t":{"rows":[24,56,45],"cols":[42,72,20]},"b":[[0,0,1,2,6,7],[1,2,1,1,4],[2,1,1,1,8],[1,1,1,1,9],[2,2,1,1,5]]},
+
+        {"s":3,"t":{"rows":[24,56,45],"cols":[42,72,20]},"b":[[0,0,1,2,6,7],[1,2,1,1,4],[2,1,1,1,8],[1,1,1,1,9],[2,2,1,1,5]]},
+        {"s":3,"t":{"rows":[56,30,12],"cols":[24,42,20]},"b":[[1,2,1,2,5,4],[0,1,1,1,8],[1,0,1,1,7],[2,0,1,1,6],[1,1,1,1,3]]},
+        {"s":3,"t":{"rows":[12,42,40],"cols":[24,28,30]},"b":[[0,2,1,2,6,5],[1,0,1,1,3],[2,2,1,1,4],[0,0,1,1,7],[2,0,1,1,8]]},
+        {"s":3,"t":{"rows":[18,40,28],"cols":[32,15,42]},"b":[[1,0,1,2,8,4],[0,2,1,1,3],[0,0,1,1,6],[2,1,1,1,5],[1,2,1,1,7]]},
+        {"s":3,"t":{"rows":[35,32,18],"cols":[12,40,42]},"b":[[0,1,1,2,5,8],[1,2,1,1,7],[0,2,1,1,4],[2,1,1,1,3],[2,2,1,1,6]]},
+        {"s":3,"t":{"rows":[42,15,32],"cols":[30,24,28]},"b":[[2,1,2,1,8,4],[0,0,1,1,6],[1,1,1,1,7],[1,0,1,1,5],[1,2,1,1,3]]},
+        {"s":3,"t":{"rows":[28,15,48],"cols":[40,21,24]},"b":[[0,1,2,1,7,4],[2,2,1,1,5],[1,2,1,1,3],[0,0,1,1,8],[2,1,1,1,6]]},
+        {"s":3,"t":{"rows":[24,35,24],"cols":[18,28,40]},"b":[[1,0,2,1,7,5],[0,0,1,1,3],[0,1,1,1,8],[1,2,1,1,6],[0,2,1,1,4]]},
+        {"s":3,"t":{"rows":[30,56,12],"cols":[15,48,28]},"b":[[0,0,2,1,5,6],[1,1,1,1,8],[1,0,1,1,7],[0,2,1,1,3],[2,1,1,1,4]]},
+        {"s":3,"t":{"rows":[18,40,28],"cols":[48,20,21]},"b":[[2,0,2,1,4,7],[0,2,1,1,6],[0,0,1,1,3],[1,2,1,1,8],[2,2,1,1,5]]},
+
+        {"s":3,"t":{"rows":[48,20,21],"cols":[40,42,12]},"b":[[0,1,2,1,8,6],[1,2,1,2,4,3],[1,1,1,1,5],[2,0,1,1,7]]},
+        {"s":3,"t":{"rows":[20,24,42],"cols":[56,15,24]},"b":[[0,1,2,1,5,4],[1,0,1,2,8,7],[2,2,1,1,3],[1,2,1,1,6]]},
+        {"s":3,"t":{"rows":[21,30,32],"cols":[40,28,18]},"b":[[0,1,2,1,7,3],[0,0,1,2,5,8],[2,0,1,1,6],[1,1,1,1,4]]},
+        {"s":3,"t":{"rows":[15,32,42],"cols":[12,35,48]},"b":[[2,1,2,1,7,6],[1,0,1,2,3,4],[1,2,1,1,5],[0,1,1,1,8]]},
+        {"s":3,"t":{"rows":[24,15,56],"cols":[48,35,12]},"b":[[2,0,2,1,8,7],[1,2,1,2,4,3],[0,2,1,1,6],[0,0,1,1,5]]},
+
+        {"s":3,"t":{"rows":[32,35,18],"cols":[42,24,20]},"b":[[2,0,2,1,6,3],[0,1,2,1,8,4],[1,2,1,1,7],[0,0,1,1,5]]},
+        {"s":3,"t":{"rows":[24,15,56],"cols":[18,28,40]},"b":[[2,0,2,1,7,8],[0,1,2,1,6,4],[1,0,1,1,3],[1,1,1,1,5]]},
+        {"s":3,"t":{"rows":[42,24,20],"cols":[18,32,35]},"b":[[2,1,2,1,4,5],[1,0,2,1,3,8],[2,0,1,1,6],[1,2,1,1,7]]},
+        {"s":3,"t":{"rows":[30,56,12],"cols":[35,18,32]},"b":[[0,0,2,1,5,6],[2,0,2,1,3,4],[1,1,1,1,7],[0,2,1,1,8]]},
+        {"s":3,"t":{"rows":[30,24,28],"cols":[40,24,21]},"b":[[0,1,2,1,5,6],[2,0,2,1,4,7],[1,1,1,1,8],[1,0,1,1,3]]},
+        {"s":3,"t":{"rows":[24,35,24],"cols":[15,48,28]},"b":[[0,2,1,2,4,7],[1,0,1,2,5,3],[2,1,1,1,6],[1,1,1,1,8]]},
+        {"s":3,"t":{"rows":[28,24,30],"cols":[40,42,12]},"b":[[1,0,1,2,8,5],[1,2,1,2,4,3],[1,1,1,1,7],[0,0,1,1,6]]},
+        {"s":3,"t":{"rows":[20,42,24],"cols":[30,21,32]},"b":[[1,1,1,2,7,3],[0,0,1,2,5,6],[0,1,1,1,4],[2,0,1,1,8]]},
+        {"s":3,"t":{"rows":[56,20,18],"cols":[42,32,15]},"b":[[1,1,1,2,8,4],[0,2,1,2,5,3],[0,1,1,1,7],[2,2,1,1,6]]},
+        {"s":3,"t":{"rows":[21,24,40],"cols":[48,15,28]},"b":[[0,2,1,2,7,4],[1,0,1,2,6,8],[2,1,1,1,3],[0,0,1,1,5]]},
+//med
+
+
+        {"s":4,"t":{"rows":[6,24,72,35],"cols":[40,8,63,18]},"b":[[2,1,2,1,0,9],[3,1,2,1,7,0],[0,0,1,2,0,8],[0,3,1,2,3,6],[1,1,1,1,2],[1,2,1,1,4],[3,3,1,1,5]]},
+        {"s":4,"t":{"rows":[72,14,12,30],"cols":[42,36,6,40]},"b":[[0,0,2,1,0,9],[3,0,2,1,0,5],[2,3,1,2,8,0],[1,1,1,2,0,4],[1,0,1,1,7],[2,0,1,1,2],[3,2,1,1,3],[0,2,1,1,6]]},
+        {"s":4,"t":{"rows":[18,28,18,40],"cols":[72,35,12,12]},"b":[[1,1,2,1,7,4],[0,0,2,1,3,6],[1,0,1,2,9,8],[2,3,1,2,0,2],[3,0,1,1,5]]},
+        {"s":4,"t":{"rows":[27,16,42,20],"cols":[40,18,24,21]},"b":[[2,2,2,1,6,7],[3,1,2,1,4,0],[0,0,1,2,8,0],[1,1,1,2,9,2],[1,2,1,1,3],[3,0,1,1,5]]},
+        {"s":4,"t":{"rows":[24,8,45,42],"cols":[54,32,35,6]},"b":[[0,1,2,1,0,8],[1,2,2,1,4,0],[2,3,1,2,2,0],[2,0,1,2,9,6],[0,0,1,1,3],[0,3,1,1,5],[3,2,1,1,7]]},
+
+        {"s":4,"t":{"rows":[48,35,6,36],"cols":[18,42,15,32]},"b":[[1,1,2,2,7,5,0,3],[0,2,2,1,0,6],[1,0,1,2,2,9],[0,1,1,1,8],[1,3,1,1,4]]},
+        {"s":4,"t":{"rows":[24,36,14,30],"cols":[40,12,12,63]},"b":[[2,2,2,2,4,9,0,7],[0,2,2,1,3,0],[2,1,1,2,0,2],[0,1,1,1,8],[1,0,1,1,5],[2,0,1,1,6]]},
+        {"s":4,"t":{"rows":[45,24,28,12],"cols":[12,42,18,40]},"b":[[2,2,2,2,7,0,6,2],[0,1,2,1,9,5],[0,0,1,2,3,4],[3,1,1,1,8]]},
+        {"s":4,"t":{"rows":[40,12,12,63],"cols":[27,35,24,16]},"b":[[1,1,2,2,5,0,0,6],[3,0,2,1,9,7],[2,3,1,2,8,2],[0,1,1,1,3],[1,0,1,1,4]]},
+        {"s":4,"t":{"rows":[16,42,36,15],"cols":[40,12,12,63]},"b":[[1,1,2,2,6,0,0,4],[0,1,2,1,2,0],[0,3,1,2,7,9],[3,1,1,1,8],[3,2,1,1,5],[2,3,1,1,3]]},
+
+        {"s":4,"t":{"rows":[56,54,20,6],"cols":[14,30,24,36]},"b":[[1,0,3,1,6,0,9],[3,0,3,1,2,0,3],[0,0,1,1,7],[1,3,1,1,8],[0,3,1,1,5],[2,1,1,1,4]]},
+        {"s":4,"t":{"rows":[12,18,35,48],"cols":[8,56,27,30]},"b":[[3,0,3,1,8,0,6],[0,1,3,1,4,0,3],[0,0,1,1,2],[1,2,1,1,9],[2,1,1,1,7],[2,3,1,1,5]]},
+        {"s":4,"t":{"rows":[56,18,20,18],"cols":[21,8,72,30]},"b":[[0,3,1,3,6,5,0],[1,0,1,3,7,3,0],[3,3,1,1,8],[1,1,1,1,4],[2,2,1,1,2],[3,2,1,1,9]]},
+        {"s":4,"t":{"rows":[40,12,18,42],"cols":[6,54,56,20]},"b":[[1,0,1,3,0,3,2],[0,3,1,3,5,4,0],[1,2,1,1,8],[2,2,1,1,9],[3,3,1,1,6],[3,2,1,1,7]]},
+
+        {"s":4,"t":{"rows":[48,12,18,35],"cols":[21,54,16,20]},"b":[[1,0,1,3,3,0,7],[2,2,1,2,2,0],[1,1,1,1,6],[0,1,1,1,8],[0,2,1,1,4],[3,1,1,1,9],[1,3,1,1,5]]},
+        {"s":4,"t":{"rows":[12,35,18,48],"cols":[24,10,27,56]},"b":[[0,3,1,3,7,0,8],[1,1,1,2,5,2],[1,0,1,1,4],[3,1,1,1,3],[2,2,1,1,9],[0,2,1,1,6]]},
+        {"s":4,"t":{"rows":[36,24,14,30],"cols":[6,56,24,45]},"b":[[1,0,3,1,3,8,0],[3,2,2,1,6,5],[2,0,1,1,4],[1,3,1,1,9],[0,2,1,1,2],[0,1,1,1,7]]},
+        {"s":4,"t":{"rows":[8,18,56,45],"cols":[20,24,18,42]},"b":[[1,1,3,1,3,0,6],[2,0,2,1,8,0],[1,0,1,1,4],[0,0,1,1,2],[0,2,1,1,7],[2,2,1,1,5],[3,1,1,1,9]]},
+
+        {"s":4,"t":{"rows":[48,33,50,36],"cols":[24,40,30,99]},"b":[[0,1,3,1,8,0,6],[3,1,2,1,4,0],[1,2,1,1,3],[1,1,1,1,11],[3,0,1,1,10],[2,2,1,1,5],[1,3,1,1,9]]},
+        {"s":4,"t":{"rows":[36,30,88,30],"cols":[12,48,55,90]},"b":[[3,1,3,1,0,6,5],[1,0,2,1,0,10],[0,1,1,1,4],[0,2,1,1,9],[2,1,1,1,3],[2,3,1,1,8],[2,2,1,1,11]]},
+        {"s":4,"t":{"rows":[24,60,55,36],"cols":[45,30,88,24]},"b":[[0,0,3,1,0,3,8],[3,1,2,1,0,4],[0,3,1,1,10],[1,1,1,1,6],[3,3,1,1,5],[1,0,1,1,11],[2,1,1,1,9]]},
+        {"s":4,"t":{"rows":[55,90,48,12],"cols":[44,30,40,54]},"b":[[1,3,1,3,0,9,6],[2,0,1,2,11,0],[0,2,1,1,5],[3,1,1,1,10],[0,0,1,1,8],[2,2,1,1,4],[0,1,1,1,3]]},
+        {"s":4,"t":{"rows":[55,24,54,40],"cols":[72,12,50,66]},"b":[[1,3,1,3,11,0,6],[0,2,1,2,0,10],[3,1,1,1,5],[1,1,1,1,8],[0,1,1,1,3],[3,2,1,1,9],[2,1,1,1,4]]},
+        {"s":4,"t":{"rows":[45,18,80,44],"cols":[90,48,33,20]},"b":[[1,0,1,3,9,0,10],[0,2,1,2,0,3],[3,2,1,1,5],[0,3,1,1,6],[1,1,1,1,8],[3,1,1,1,11],[0,1,1,1,4]]},
+
+        {"s":4,"t":{"rows":[24,55,70,36],"cols":[28,15,99,80]},"b":[[0,1,1,3,3,5,0],[0,0,1,2,0,7],[0,2,1,2,0,11],[1,3,1,1,8],[3,1,1,1,10],[2,0,1,1,4],[2,2,1,1,9]]},
+        {"s":4,"t":{"rows":[28,55,30,72],"cols":[80,33,36,35]},"b":[[0,0,1,3,0,10,8],[1,3,1,2,7,5],[2,2,1,2,4,0],[1,1,1,1,11],[0,2,1,1,3],[2,1,1,1,9]]},
+        {"s":4,"t":{"rows":[35,40,27,88],"cols":[110,15,63,32]},"b":[[1,1,1,3,5,0,3],[1,0,1,2,0,10],[2,2,1,2,9,0],[0,1,1,1,7],[1,3,1,1,4],[3,0,1,1,11],[3,3,1,1,8]]},
+        {"s":4,"t":{"rows":[15,63,80,44],"cols":[50,88,28,27]},"b":[[3,0,3,1,0,11,4],[0,0,2,1,5,0],[2,0,2,1,8,0],[0,3,1,1,3],[2,2,1,1,7],[1,1,1,1,9],[2,3,1,1,10]]},
+        {"s":4,"t":{"rows":[63,88,30,20],"cols":[15,70,72,44]},"b":[[0,0,3,1,7,9,0],[2,1,2,1,10,0],[1,0,2,1,0,8],[2,3,1,1,11],[2,0,1,1,3],[3,0,1,1,5],[1,3,1,1,4]]},
+        {"s":4,"t":{"rows":[90,56,33,20],"cols":[27,35,110,32]},"b":[[1,0,3,1,7,0,8],[2,0,2,1,11,0],[0,1,2,1,0,10],[3,0,1,1,9],[2,2,1,1,3],[0,0,1,1,5],[0,3,1,1,4]]},
+
+        {"s":4,"t":{"rows":[30,77,90,12],"cols":[36,60,33,35]},"b":[[1,2,2,1,0,11],[2,3,1,2,7,0],[0,1,1,1,6],[0,2,1,1,5],[3,2,1,1,9],[3,1,1,1,10],[1,0,1,1,4],[2,1,1,1,3]]},
+        {"s":4,"t":{"rows":[24,63,30,55],"cols":[99,21,20,60]},"b":[[3,2,2,1,5,0],[0,1,1,2,7,3],[2,2,1,1,4],[1,2,1,1,6],[3,1,1,1,9],[1,3,1,1,10],[2,1,1,1,11]]},
+        {"s":4,"t":{"rows":[24,50,33,63],"cols":[30,44,21,90]},"b":[[3,1,2,1,0,7],[2,0,1,2,6,5],[0,0,1,1,4],[2,2,1,1,10],[2,3,1,1,11],[1,1,1,1,3],[0,2,1,1,9]]},
+
+        {"s":4,"t":{"rows":[45,24,6,56],"cols":[27,20,16,42]},"b":[[2,1,2,1,0,2],[0,1,2,1,9,5],[1,0,1,2,3,0],[1,3,1,2,0,6],[3,0,1,1,4],[1,1,1,1,8],[3,2,1,1,7]]},
+        {"s":4,"t":{"rows":[10,56,27,24],"cols":[20,18,42,24]},"b":[[3,2,2,1,0,6],[0,1,2,1,5,2],[2,0,1,2,0,4],[1,2,1,2,7,0],[1,3,1,1,8],[2,3,1,1,9],[2,1,1,1,3]]},
+        {"s":4,"t":{"rows":[32,18,15,42],"cols":[21,30,16,36]},"b":[[2,1,2,1,5,0],[1,1,2,1,0,2],[0,0,1,2,3,7],[1,3,1,2,4,9],[0,2,1,1,8],[3,2,1,1,6]]},
+        {"s":4,"t":{"rows":[6,32,63,30],"cols":[12,54,40,14]},"b":[[3,1,2,1,6,5],[1,1,2,1,0,8],[2,3,1,2,7,0],[2,0,1,2,4,0],[1,0,1,1,3],[2,2,1,1,2],[1,3,1,1,9]]},
+        {"s":4,"t":{"rows":[63,30,12,16],"cols":[35,32,54,6]},"b":[[3,2,2,1,0,8],[0,0,2,1,0,9],[1,3,1,2,0,3],[1,0,1,2,7,5],[2,1,1,1,6],[1,2,1,1,4],[0,2,1,1,2]]},
+        {"s":4,"t":{"rows":[24,14,45,24],"cols":[32,10,63,18]},"b":[[3,0,2,1,4,0],[0,2,2,1,0,3],[1,0,1,2,8,0],[2,2,1,2,7,9],[1,1,1,1,2],[0,0,1,1,5],[2,3,1,1,6]]},
+        {"s":4,"t":{"rows":[18,24,35,24],"cols":[30,27,28,16]},"b":[[3,2,2,1,4,0],[2,2,2,1,7,0],[0,1,1,2,9,3],[1,0,1,2,0,5],[0,2,1,1,2],[0,3,1,1,8],[3,0,1,1,6]]},
+        {"s":4,"t":{"rows":[54,35,24,8],"cols":[45,32,6,42]},"b":[[0,1,2,1,0,6],[3,2,2,1,4,2],[1,1,1,2,0,8],[1,3,1,2,7,0],[0,0,1,1,9],[2,2,1,1,5],[3,0,1,1,3]]},
+        {"s":4,"t":{"rows":[15,54,16,28],"cols":[14,40,24,27]},"b":[[3,1,2,1,4,0],[0,1,2,1,5,0],[0,3,1,2,3,9],[1,0,1,2,0,2],[2,1,1,1,6],[2,2,1,1,8],[1,2,1,1,7]]},
+        {"s":4,"t":{"rows":[42,24,10,36],"cols":[12,20,21,72]},"b":[[2,2,2,1,5,0],[0,0,2,1,7,0],[2,1,1,2,0,0],[1,0,1,2,2,0],[1,2,1,1,6],[0,3,1,1,3],[0,2,1,1,8],[3,2,1,1,4],[3,3,1,1,9]]},
+
+        //hard
+        {"s":5,"t":{"rows":[18,56,120,36,55],"cols":[30,35,44,96,54]},"b":[[4,2,3,1,5,11,0],[0,1,1,3,7,0,0],[1,3,2,1,8,0],[0,2,1,2,0,4],[3,0,1,1,3],[0,3,1,1,6],[4,1,1,1,10],[2,3,1,1,12],[3,2,1,1,9]]},
+        {"s":5,"t":{"rows":[72,21,72,20,110],"cols":[18,77,96,36,50]},"b":[[3,1,3,1,0,0,4],[1,4,1,3,0,0,5],[0,1,2,1,0,8],[3,0,1,2,3,6],[2,1,1,1,9],[1,0,1,1,7],[2,0,1,1,12],[4,2,1,1,11],[1,2,1,1,10]]},
+        {"s":5,"t":{"rows":[48,15,110,48,63],"cols":[44,45,24,72,70]},"b":[[3,1,3,1,8,6,0],[0,0,1,3,4,0,11],[2,1,2,1,0,10],[0,1,1,2,5,0],[2,4,1,1,12],[0,3,1,1,3],[4,3,1,1,9],[4,4,1,1,7]]},
+        {"s":5,"t":{"rows":[60,28,99,24,60],"cols":[66,84,80,27,20]},"b":[[2,2,3,1,0,9,0],[2,0,1,3,0,0,11],[4,3,2,1,0,10],[1,1,1,2,12,7],[0,3,1,1,5],[1,3,1,1,4],[3,3,1,1,8],[3,4,1,1,3],[4,2,1,1,6]]},
+        {"s":5,"t":{"rows":[60,80,54,21,44],"cols":[30,120,72,12,77]},"b":[[3,1,3,1,0,0,3],[0,4,1,3,0,7,11],[4,3,2,1,0,0],[0,1,1,2,12,10],[4,0,1,1,5],[1,3,1,1,8],[4,2,1,1,6],[2,3,1,1,9],[3,4,1,1,4]]},
+        {"s":5,"t":{"rows":[132,35,12,80,54],"cols":[40,88,84,45,18]},"b":[[1,2,3,1,0,7,5],[0,0,1,3,4,10,0],[4,1,2,1,9,6],[2,1,1,2,8,0],[2,3,1,1,11],[0,3,1,1,12],[3,3,1,1,3]]},
+
+        {"s":5,"t":{"rows":[60,32,63,60,33],"cols":[72,55,42,48,30]},"b":[[2,1,2,2,12,0,0,3],[1,3,2,1,0,4],[0,0,1,2,9,0],[4,3,1,1,6],[0,4,1,1,10],[0,3,1,1,8],[1,1,1,1,7],[4,1,1,1,5],[3,3,1,1,11]]},
+        {"s":5,"t":{"rows":[48,48,27,55,70],"cols":[90,60,77,18,32]},"b":[[2,2,2,2,0,3,11,0],[0,3,2,1,0,4],[2,1,1,2,12,0],[3,4,1,1,6],[4,4,1,1,8],[1,2,1,1,9],[1,0,1,1,5],[0,2,1,1,10],[4,1,1,1,7]]},
+        {"s":5,"t":{"rows":[28,45,110,48,36],"cols":[66,120,20,63,24]},"b":[[2,1,2,2,0,0,12,0],[1,1,2,1,0,5],[1,0,1,2,11,6],[0,4,1,2,0,0],[2,4,1,1,4],[1,3,1,1,7],[2,3,1,1,9],[0,1,1,1,10],[4,4,1,1,8],[0,3,1,1,3]]},
+        {"s":5,"t":{"rows":[80,54,84,44,15],"cols":[77,48,60,90,12]},"b":[[0,3,2,2,0,12,0,0],[1,1,2,1,0,9],[2,0,1,2,7,11],[2,4,1,2,0,4],[3,1,1,1,8],[2,2,1,1,10],[0,2,1,1,6],[4,4,1,1,5],[3,3,1,1,3]]},
+        {"s":5,"t":{"rows":[80,36,24,55,63],"cols":[99,18,60,40,56]},"b":[[1,0,2,2,6,0,0,5],[1,3,2,1,12,0],[0,3,2,1,0,10],[3,3,1,2,4,0],[2,3,1,1,8],[3,0,1,1,3],[2,2,1,1,11],[3,2,1,1,9],[0,0,1,1,7]]},
+        {"s":5,"t":{"rows":[24,45,33,80,84],"cols":[54,40,110,36,28]},"b":[[2,3,2,2,5,0,0,11],[4,0,2,1,0,0],[0,0,2,1,0,4],[2,0,1,2,9,0],[1,2,1,1,6],[0,3,1,1,3],[2,1,1,1,8],[1,0,1,1,10],[1,4,1,1,12],[4,2,1,1,7]]},
+        {"s":5,"t":{"rows":[24,90,132,24,35],"cols":[30,21,120,32,99]},"b":[[2,1,2,2,12,0,0,8],[4,2,2,1,5,7],[1,2,2,1,0,10],[2,0,1,2,6,0],[1,0,1,1,4],[3,4,1,1,9],[4,4,1,1,11],[4,1,1,1,3]]},
+        {"s":5,"t":{"rows":[36,55,120,42,24],"cols":[60,60,33,72,28]},"b":[[1,0,2,2,0,0,5,11],[3,2,2,1,6,0],[2,2,2,1,12,0],[2,4,1,2,0,7],[0,2,1,1,9],[1,3,1,1,4],[3,0,1,1,10],[4,3,1,1,3],[0,0,1,1,8]]},
+        {"s":5,"t":{"rows":[88,50,72,36,21],"cols":[33,60,80,54,28]},"b":[[1,3,2,2,10,0,0,6],[3,3,2,1,0,0],[4,3,2,1,3,0],[2,1,1,2,5,12],[1,2,1,1,11],[2,0,1,1,8],[0,1,1,1,9],[4,1,1,1,4],[3,2,1,1,7]]},
+
+        {"s":5,"t":{"rows":[99,21,96,30,40],"cols":[33,63,72,80,20]},"b":[[4,0,3,1,0,10,4],[1,1,2,1,7,0],[2,1,2,1,0,12],[0,1,2,1,11,9],[1,3,1,2,8,0],[3,4,1,2,0,0],[3,0,1,1,3],[0,3,1,1,6],[4,3,1,1,5]]},
+        {"s":5,"t":{"rows":[15,132,72,60,28],"cols":[80,55,36,36,42]},"b":[[0,2,3,1,5,3,0],[3,1,2,1,0,0],[4,3,2,1,4,7],[1,1,2,1,12,0],[3,0,1,2,0,8],[2,4,1,2,0,6],[4,2,1,1,11],[1,3,1,1,9],[3,3,1,1,10]]},
+        {"s":5,"t":{"rows":[88,54,15,48,70],"cols":[60,28,27,40,132]},"b":[[3,2,3,1,4,0,0],[4,3,2,1,7,0],[1,2,2,1,9,0],[0,2,2,1,8,11],[1,4,1,2,12,0],[0,0,1,2,0,6],[2,1,1,1,3],[4,1,1,1,5],[4,0,1,1,10]]},
+
+        {"s":5,"t":{"rows":[66,15,80,63,48],"cols":[44,90,21,96,30]},"b":[[3,3,2,2,10,0,9,7],[1,1,2,1,0,3],[0,0,2,1,11,0],[4,0,2,1,12,0],[1,0,1,2,0,0],[0,4,1,2,6,5],[0,3,1,2,0,8],[2,4,1,1,4]]},
+        {"s":5,"t":{"rows":[60,32,36,55,63],"cols":[56,40,60,18,99]},"b":[[2,2,2,2,12,3,5,0],[4,2,2,1,0,9],[1,1,2,1,8,4],[0,3,2,1,0,10],[2,1,1,2,0,0],[1,4,1,2,0,0],[1,0,1,2,0,7],[1,3,1,1,6],[0,2,1,1,11]]},
+        {"s":5,"t":{"rows":[32,55,54,70,36],"cols":[18,40,108,88,35]},"b":[[0,0,2,2,0,4,0,0],[0,3,2,1,8,0],[1,3,2,1,11,5],[4,3,2,1,12,0],[3,1,1,2,0,10],[2,2,1,2,9,0],[2,4,1,2,7,0],[2,0,1,1,6],[3,0,1,1,3]]},
+        {"s":5,"t":{"rows":[44,36,80,42,45],"cols":[48,27,60,56,55]},"b":[[2,0,2,2,0,10,0,6],[1,0,2,1,12,3],[0,1,2,1,0,0],[4,1,2,1,0,9],[0,4,1,2,11,0],[2,4,1,2,0,5],[2,3,1,2,8,7],[1,3,1,1,4]]},
+        {"s":5,"t":{"rows":[28,40,54,36,110],"cols":[66,27,32,35,120]},"b":[[3,3,2,2,0,12,0,10],[3,1,2,1,0,3],[0,1,2,1,0,4],[4,0,2,1,11,0],[0,0,1,2,0,6],[1,2,1,2,8,0],[1,4,1,2,0,0],[0,4,1,1,7],[2,1,1,1,5],[2,3,1,1,9]]},
+        {"s":5,"t":{"rows":[35,40,66,24,108],"cols":[50,88,54,84,12]},"b":[[3,0,2,2,8,0,0,9],[2,1,2,1,11,6],[0,3,2,1,0,7],[1,1,2,1,0,0],[1,0,1,2,10,0],[1,3,1,2,0,12],[3,4,1,2,4,0],[0,1,1,1,5],[4,3,1,1,3]]},
+        {"s":5,"t":{"rows":[48,54,40,110,21],"cols":[44,45,96,42,30]},"b":[[2,1,2,2,0,6,8,0],[0,2,3,1,12,0,0],[4,1,2,1,0,0],[4,3,2,1,7,3],[1,4,1,2,0,10],[1,0,1,2,4,0],[0,1,1,2,9,5],[3,0,1,1,11]]},
+        {"s":5,"t":{"rows":[20,70,108,66,24],"cols":[40,72,21,72,55]},"b":[[2,2,2,2,7,0,0,9],[4,1,3,1,3,8,0],[0,2,2,1,4,0],[3,0,2,1,0,11],[1,0,1,2,0,0],[1,4,1,2,5,0],[0,1,1,2,12,6],[4,0,1,1,10]]},
+
+
+        {"s":5,"t":{"rows":[54,16,35,30,4],"cols":[24,72,20,5,21]},"b":[[0,1,2,1,0,0],[3,3,2,1,0,10],[2,3,2,1,0,5],[4,2,2,1,0,1],[3,1,1,2,9,8],[3,0,1,2,0,4],[1,0,1,2,6,0],[0,4,1,2,0,7],[1,2,1,1,2],[4,4,1,1,3]]},
+        {"s":5,"t":{"rows":[2,54,56,20,30],"cols":[12,72,7,50,12]},"b":[[0,0,2,1,0,1],[3,1,2,1,5,0],[4,2,2,1,3,0],[1,1,1,2,9,8],[1,3,1,2,0,0],[2,0,1,2,0,0],[1,2,1,2,0,7],[0,3,1,1,2],[2,4,1,1,6],[4,1,1,1,4],[4,4,1,1,10]]},
+        {"s":5,"t":{"rows":[90,15,16,28,6],"cols":[24,12,35,36,10]},"b":[[3,1,2,1,0,7],[4,2,2,1,0,6],[0,1,2,1,0,0],[1,1,2,1,5,0],[1,4,1,2,10,0],[2,3,1,2,4,0],[1,0,1,2,3,8],[3,4,1,2,0,1],[0,3,1,1,9],[3,0,1,1,2]]},
+        {"s":5,"t":{"rows":[35,40,2,72,18],"cols":[40,14,4,60,27]},"b":[[0,2,3,1,7,0,0],[2,1,1,3,2,0,0],[1,2,2,1,4,10],[4,3,2,1,6,3],[0,0,1,2,0,8],[1,4,1,2,0,9],[3,2,1,2,1,0],[0,1,1,1,5]]},
+        {"s":5,"t":{"rows":[48,10,30,63,4],"cols":[16,24,35,27,10]},"b":[[0,1,2,1,6,0],[3,1,2,1,7,9],[4,3,2,1,0,1],[2,2,2,1,0,0],[3,0,1,2,0,0],[0,3,1,2,0,3],[0,0,1,2,8,2],[1,4,1,2,0,10],[1,1,1,1,5],[4,1,1,1,4]]},
+        {"s":5,"t":{"rows":[27,30,32,14,10],"cols":[15,70,24,2,72]},"b":[[2,1,2,1,4,0],[1,2,2,1,0,6],[4,1,2,1,0,1],[0,2,2,1,0,9],[2,0,1,2,0,0],[0,1,1,2,7,10],[0,4,1,2,0,8],[1,0,1,1,3],[2,3,1,1,5],[3,3,1,1,2]]},
+        {"s":5,"t":{"rows":[10,30,63,32,6],"cols":[45,56,60,3,8]},"b":[[4,2,2,1,0,6],[0,1,2,1,5,0],[2,1,2,1,7,0],[1,0,2,1,0,10],[1,4,1,2,2,0],[2,3,1,2,0,1],[3,4,1,2,4,0],[3,0,1,2,9,0],[0,3,1,1,3],[3,2,1,1,8]]},
+        {"s":5,"t":{"rows":[72,24,3,20,35],"cols":[18,18,4,50,56]},"b":[[0,0,1,3,0,2,0],[0,1,2,1,9,0],[1,2,2,1,6,4],[4,1,2,1,0,5],[2,1,1,2,3,0],[2,3,1,2,0,0],[1,4,1,2,0,7],[0,3,1,1,8],[4,0,1,1,1],[3,0,1,1,10]]},
+        {"s":5,"t":{"rows":[36,48,21,10,10],"cols":[2,72,30,12,70]},"b":[[0,1,2,1,4,0],[4,2,2,1,5,0],[3,1,2,1,0,0],[2,1,2,1,0,3],[1,4,1,2,7,10],[1,0,1,2,0,0],[3,0,1,2,1,2],[1,1,1,1,9],[1,3,1,1,8],[1,2,1,1,6]]},
+        {"s":5,"t":{"rows":[24,4,50,18,42],"cols":[24,40,10,6,63]},"b":[[2,4,1,3,0,9,7],[1,3,2,1,1,0],[0,1,2,1,0,8],[0,3,2,1,3,0],[4,1,2,1,0,0],[2,1,1,2,0,5],[3,3,1,2,0,2],[2,0,1,2,0,6],[0,0,1,1,4],[2,2,1,1,10]]},
+
+
+    ];
+
+  // ================= CANVAS + POLYFILLS =================
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+
+  // roundRect polyfill
+  if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+      const radius = typeof r === 'number'
+        ? { tl: r, tr: r, br: r, bl: r }
+        : { tl: 0, tr: 0, br: 0, bl: 0, ...r };
+      this.beginPath();
+      this.moveTo(x + radius.tl, y);
+      this.lineTo(x + w - radius.tr, y);
+      this.quadraticCurveTo(x + w, y, x + w, y + radius.tr);
+      this.lineTo(x + w, y + h - radius.br);
+      this.quadraticCurveTo(x + w, y + h, x + w - radius.br, y + h);
+      this.lineTo(x + radius.bl, y + h);
+      this.quadraticCurveTo(x, y + h, x, y + h - radius.bl);
+      this.lineTo(x, y + radius.tl);
+      this.quadraticCurveTo(x, y, x + radius.tl, y);
+      return this;
+    };
+  }
+
+  // ================= STATE =================
+  let tutorialMode = false;
+  let currentLvlIdx = 0;
+
+  let GRID_SIZE = 72; // will be dynamically scaled
+  let SNAP_SPEED = 0.25;
+
+  let p = null;
+  let originalScramble = null;
+  let isSolved = false;
+
+  let drag = { active: null, axis: null, lastX: 0, lastY: 0 };
+  let moveHistory = [];
+
+  // solve animation
+  let solveAnim = null; // {phase:'rows'|'cols'|'final', startTime}
+  const SOLVE_STEP_MS = 200;
+  const SOLVE_FINAL_MS = 1000;
+
+  // ================= UI HELPERS =================
+  function toggleHelp(show) {
+    document.getElementById('instructions-overlay').style.display = show ? 'flex' : 'none';
+  }
+
+  function setModeLabel() {
+    document.getElementById('modeLabel').innerText = tutorialMode ? 'Tutorial' : 'Puzzle';
+    // Scurry-style: tutorial shows 1..TUTORIAL_COUNT, main shows 1..(PUZZLES.length-TUTORIAL_COUNT)
+    const displayNum = tutorialMode ? (currentLvlIdx + 1) : (currentLvlIdx - TUTORIAL_COUNT + 1);
+    document.getElementById('lvlNum').innerText = Math.max(1, displayNum);
+  }
+
+  function updateUIState() {
+    document.getElementById('undoBtn').disabled = moveHistory.length === 0 || isSolved;
+
+    const skipWrap = document.getElementById('skipTutorialWrap');
+    const skipBtn = document.getElementById('skipTutorialBtn');
+    const tutorialEnd = document.getElementById('tutorialEnd');
+    const nextBtn = document.getElementById('solveNextBtn');
+    const restartBtn = document.getElementById('restartTutorialBtn');
+    const playPuzzlesBtn = document.getElementById('playPuzzlesBtn');
+
+    const lastTutorialIdx = TUTORIAL_COUNT - 1;
+    const atTutorialEnd = tutorialMode && isSolved && currentLvlIdx === lastTutorialIdx;
+
+    // ===== tutorial end screen =====
+    if (atTutorialEnd) {
+      tutorialEnd.classList.remove('hidden');
+      nextBtn.classList.add('hidden');
+      skipWrap.classList.add('hidden');
+      if (restartBtn) restartBtn.classList.add('hidden');
+      if (playPuzzlesBtn) playPuzzlesBtn.classList.add('btn-primary');
+    } else {
+      tutorialEnd.classList.add('hidden');
+      if (restartBtn) restartBtn.classList.remove('hidden');
+
+      // ===== bottom tutorial button state =====
+      if (tutorialMode) {
+        skipWrap.classList.remove('hidden');
+        if (isSolved && currentLvlIdx < lastTutorialIdx) {
+          skipBtn.innerText = 'Next Puzzle';
+          skipBtn.classList.add('btn-primary');
+        } else {
+          skipBtn.innerText = 'Skip Tutorial';
+          skipBtn.classList.remove('btn-primary');
+        }
+      } else {
+        skipWrap.classList.add('hidden');
+      }
+
+      // ===== main game next button =====
+      if (!tutorialMode && isSolved && currentLvlIdx < PUZZLES.length - 1) nextBtn.classList.remove('hidden');
+      else nextBtn.classList.add('hidden');
+    }
+
+    // ===== arrows disabled state =====
+    const prev = document.getElementById('prevBtn');
+    const next = document.getElementById('nextBtn');
+
+    const minIdx = tutorialMode ? 0 : TUTORIAL_COUNT;
+    const maxIdx = tutorialMode ? Math.min(TUTORIAL_COUNT - 1, PUZZLES.length - 1) : PUZZLES.length - 1;
+
+    const prevDisabled = currentLvlIdx <= minIdx;
+    const nextDisabled = currentLvlIdx >= maxIdx;
+
+    prev.classList.toggle('disabled', prevDisabled);
+    next.classList.toggle('disabled', nextDisabled);
+  }
+
+  // ================= TUTORIAL CONTROL =================
+  function startTutorial() {
+    tutorialMode = true;
+    currentLvlIdx = 0;
+    toggleHelp(false);
+    loadPuzzle(currentLvlIdx);
+  }
+
+  function startMainGame() {
+    tutorialMode = false;
+    currentLvlIdx = Math.min(TUTORIAL_COUNT, PUZZLES.length - 1);
+    toggleHelp(false);
+    loadPuzzle(currentLvlIdx);
+  }
+
+  function skipTutorial() {
+    startMainGame();
+  }
+
+  // ================= TILE + PUZZLE =================
+  function allowedAxes(t) {
+    if (t.w > t.h) return { h: true, v: false };
+    if (t.h > t.w) return { h: false, v: true };
+    return { h: true, v: true };
+  }
+
+  function tileColor(t) {
+    if (t.w === 2 && t.h === 2) return '#1e3a8a';
+    if (t.w === 3 && t.h === 1) return '#16a34a';
+    if (t.w === 1 && t.h === 3) return '#dc2626';
+    if (t.w === 2 && t.h === 1) return '#f59e0b';
+    if (t.w === 1 && t.h === 2) return '#8b5cf6';
+    return '#3b82f6';
+  }
+
+  function parseTile(raw, id) {
+    const r = raw[0], c = raw[1], w = raw[2], h = raw[3];
+    let vals = raw.slice(4);
+    const need = w * h;
+    if (vals.length < need) vals = vals.concat(new Array(need - vals.length).fill(0));
+    vals = vals.slice(0, need).map(v => (v == null ? 0 : v));
+    return {
+      id, r, c, w, h, vals,
+      x: c * GRID_SIZE + (w * GRID_SIZE) / 2,
+      y: r * GRID_SIZE + (h * GRID_SIZE) / 2
+    };
+  }
+
+  function loadPuzzle(index) {
+    if (!PUZZLES[index]) return;
+    const data = PUZZLES[index];
+    const inflatedTiles = data.b.map((raw, i) => parseTile(raw, i + 1));
+    p = { size: data.s, targets: data.t, tiles: inflatedTiles };
+    originalScramble = JSON.parse(JSON.stringify(inflatedTiles));
+
+    setModeLabel();
+
+    moveHistory = [];
+    isSolved = false;
+    solveAnim = null;
+    drag.active = null;
+
+    // ===== RESPONSIVE GRID SIZE =====
+    const container = document.querySelector('.game-container');
+    const controlsHeight = 260; // header + buttons allowance
+    const maxBoardHeight = window.innerHeight - controlsHeight;
+    const maxBoardWidth = Math.min(container.clientWidth - 60, 420);
+
+    const sizeFromHeight = Math.floor(maxBoardHeight / p.size);
+    const sizeFromWidth = Math.floor(maxBoardWidth / p.size);
+
+    GRID_SIZE = Math.max(48, Math.min(72, sizeFromHeight, sizeFromWidth));
+
+    canvas.width = p.size * GRID_SIZE;
+    canvas.height = p.size * GRID_SIZE;
+    setupHTMLTargets();
+
+    updateUIState();
+  }
+
+  function setupHTMLTargets() {
+    const rowCont = document.getElementById('rowTargets');
+    const colCont = document.getElementById('colTargets');
+
+    rowCont.innerHTML = '';
+    colCont.innerHTML = '';
+
+    rowCont.style.height = `${canvas.height}px`;
+    colCont.style.width = `${canvas.width}px`;
+
+    p.targets.rows.forEach((val, i) => {
+      const div = document.createElement('div');
+      div.className = 'target';
+      div.id = `row-t-${i}`;
+      div.innerText = val;
+      div.style.transform = 'scale(1)';
+      rowCont.appendChild(div);
+    });
+
+    p.targets.cols.forEach((val, i) => {
+      const div = document.createElement('div');
+      div.className = 'target';
+      div.id = `col-t-${i}`;
+      div.innerText = val;
+      div.style.transform = 'scale(1)';
+      colCont.appendChild(div);
+    });
+  }
+
+  function computeProducts() {
+    const curR = new Array(p.size).fill(1);
+    const curC = new Array(p.size).fill(1);
+    const hasNumR = new Array(p.size).fill(false);
+    const hasNumC = new Array(p.size).fill(false);
+
+    for (const t of p.tiles) {
+      for (let rr = 0; rr < t.h; rr++) {
+        for (let cc = 0; cc < t.w; cc++) {
+          const v = t.vals[rr * t.w + cc];
+          if (v && v !== 0) {
+            curR[t.r + rr] *= v;
+            curC[t.c + cc] *= v;
+            hasNumR[t.r + rr] = true;
+            hasNumC[t.c + cc] = true;
+          }
+        }
+      }
+    }
+
+    for (let i = 0; i < p.size; i++) {
+      if (!hasNumR[i]) curR[i] = 0;
+      if (!hasNumC[i]) curC[i] = 0;
+    }
+
+    return { curR, curC };
+  }
+
+  // ================= MOVE ENGINE (push chain) =================
+  function getBounds(t, pxX, pxY) {
+    return {
+      l: pxX - (t.w * GRID_SIZE) / 2,
+      r: pxX + (t.w * GRID_SIZE) / 2,
+      t: pxY - (t.h * GRID_SIZE) / 2,
+      b: pxY + (t.h * GRID_SIZE) / 2
+    };
+  }
+
+  function overlap(b1, b2) {
+    const EPS = 0.75;
+    return (Math.min(b1.r, b2.r) - Math.max(b1.l, b2.l) > EPS) &&
+           (Math.min(b1.b, b2.b) - Math.max(b1.t, b2.t) > EPS);
+  }
+
+  function testMove(t, axis, dist, visited) {
+    if (visited.has(t.id)) return true;
+    visited.add(t.id);
+
+    const ax = allowedAxes(t);
+    if ((axis === 'h' && !ax.h) || (axis === 'v' && !ax.v)) return false;
+
+    const nX = t.x + (axis === 'h' ? dist : 0);
+    const nY = t.y + (axis === 'v' ? dist : 0);
+    const b = getBounds(t, nX, nY);
+    const lim = p.size * GRID_SIZE;
+
+    if (b.l < -0.1 || b.r > lim + 0.1 || b.t < -0.1 || b.b > lim + 0.1) return false;
+
+    for (const o of p.tiles) {
+      if (!visited.has(o.id) && overlap(b, getBounds(o, o.x, o.y))) {
+        if (!testMove(o, axis, dist, visited)) return false;
+      }
+    }
+
+    return true;
+  }
+
+  function executeMove(t, axis, dist, visited) {
+    if (visited.has(t.id)) return;
+    visited.add(t.id);
+
+    const b = getBounds(t, t.x + (axis === 'h' ? dist : 0), t.y + (axis === 'v' ? dist : 0));
+    for (const o of p.tiles) {
+      if (!visited.has(o.id) && overlap(b, getBounds(o, o.x, o.y))) {
+        executeMove(o, axis, dist, visited);
+      }
+    }
+
+    if (axis === 'h') t.x += dist;
+    else t.y += dist;
+  }
+
+  function saveState() {
+    moveHistory.push(JSON.stringify(p.tiles.map(t => ({ id: t.id, r: t.r, c: t.c }))));
+    updateUIState();
+  }
+
+  // ================= POINTER INPUT (mouse + touch + stylus) =================
+  function getPointerPos(evt) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+  }
+
+  function pointerDown(evt) {
+    if (isSolved) return;
+    const { x: mx, y: my } = getPointerPos(evt);
+
+    const hit = p.tiles.find(t => {
+      const b = getBounds(t, t.x, t.y);
+      return mx > b.l && mx < b.r && my > b.t && my < b.b;
+    });
+
+    if (hit) {
+      saveState();
+      drag.active = hit;
+      drag.lastX = mx;
+      drag.lastY = my;
+      drag.axis = null;
+      canvas.setPointerCapture?.(evt.pointerId);
+    }
+  }
+
+  function pointerMove(evt) {
+    if (!drag.active) return;
+    const { x: mx, y: my } = getPointerPos(evt);
+
+    if (!drag.axis) {
+      const dx = Math.abs(mx - drag.lastX);
+      const dy = Math.abs(my - drag.lastY);
+      if (dx <= 5 && dy <= 5) return;
+
+      // choose intent axis by motion, but respect tile constraints
+      let intended = dx > dy ? 'h' : 'v';
+      const ax = allowedAxes(drag.active);
+      if (intended === 'h' && !ax.h && ax.v) intended = 'v';
+      if (intended === 'v' && !ax.v && ax.h) intended = 'h';
+      if ((intended === 'h' && !ax.h) || (intended === 'v' && !ax.v)) return;
+
+      drag.axis = intended;
+    }
+
+    const delta = (drag.axis === 'h' ? mx - drag.lastX : my - drag.lastY);
+    const steps = Math.abs(Math.round(delta));
+    const dir = Math.sign(delta);
+
+    for (let i = 0; i < steps; i++) {
+      if (testMove(drag.active, drag.axis, dir, new Set())) {
+        executeMove(drag.active, drag.axis, dir, new Set());
+      } else {
+        break;
+      }
+    }
+
+    if (drag.axis === 'h') drag.lastX = mx;
+    else drag.lastY = my;
+  }
+
+  function pointerUp() {
+    if (drag.active) {
+      let moved = false;
+      for (const t of p.tiles) {
+        const oldR = t.r;
+        const oldC = t.c;
+        t.c = Math.round((t.x - (t.w * GRID_SIZE) / 2) / GRID_SIZE);
+        t.r = Math.round((t.y - (t.h * GRID_SIZE) / 2) / GRID_SIZE);
+        if (t.c !== oldC || t.r !== oldR) moved = true;
+      }
+
+      if (!moved) {
+        // match prior behavior: don't count a "move" if nothing changed
+        moveHistory.pop();
+        updateUIState();
+      } else {
+        checkWin();
+      }
+    }
+
+    drag.active = null;
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    pointerDown(e);
+  }, { passive: false });
+
+  window.addEventListener('pointermove', (e) => {
+    if (drag.active) e.preventDefault();
+    pointerMove(e);
+  }, { passive: false });
+
+  window.addEventListener('pointerup', () => { pointerUp(); }, { passive: true });
+  window.addEventListener('pointercancel', () => { pointerUp(); }, { passive: true });
+
+  // ================= WIN + ANIMATION =================
+  function checkWin() {
+    const { curR, curC } = computeProducts();
+    const win = p.targets.rows.every((val, i) => curR[i] === val) &&
+                p.targets.cols.every((val, i) => curC[i] === val);
+
+    if (win && !isSolved) {
+      isSolved = true;
+      startSolveAnimation();
+      updateUIState();
+    }
+  }
+
+  function startSolveAnimation() {
+    solveAnim = { phase: 'rows', startTime: performance.now() };
+  }
+
+  function popTarget(id, localTime) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const t = Math.min(1, localTime / SOLVE_STEP_MS);
+    const scale = 1 + 0.35 * Math.sin(t * Math.PI);
+    el.style.transform = `scale(${scale})`;
+  }
+
+  function drawVictoryOverlay(now) {
+    if (!solveAnim) return;
+
+    const elapsed = now - solveAnim.startTime;
+    const rows = p.size;
+    const cols = p.size;
+    const step = SOLVE_STEP_MS;
+
+    if (solveAnim.phase === 'rows') {
+      const i = Math.floor(elapsed / step);
+      if (i >= rows) {
+        solveAnim.phase = 'cols';
+        solveAnim.startTime = now;
+        return;
+      }
+      ctx.fillStyle = 'rgba(34,197,94,0.25)';
+      ctx.fillRect(0, i * GRID_SIZE, canvas.width, GRID_SIZE);
+      popTarget(`row-t-${i}`, elapsed % step);
+      return;
+    }
+
+    if (solveAnim.phase === 'cols') {
+      const i = Math.floor(elapsed / step);
+      if (i >= cols) {
+        solveAnim.phase = 'final';
+        solveAnim.startTime = now;
+        return;
+      }
+      ctx.fillStyle = 'rgba(34,197,94,0.25)';
+      ctx.fillRect(i * GRID_SIZE, 0, GRID_SIZE, canvas.height);
+      popTarget(`col-t-${i}`, elapsed % step);
+      return;
+    }
+
+    if (solveAnim.phase === 'final') {
+      const a = Math.max(0, 1 - elapsed / SOLVE_FINAL_MS);
+      ctx.fillStyle = `rgba(34,197,94,${0.15 * a})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      if (elapsed >= SOLVE_FINAL_MS) solveAnim = null;
+    }
+  }
+
+  // ================= DRAW =================
+  function draw(now = performance.now()) {
+    if (!p) { requestAnimationFrame(draw); return; }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const { curR, curC } = computeProducts();
+
+    // update target greens
+    for (let i = 0; i < p.size; i++) {
+      const rEl = document.getElementById(`row-t-${i}`);
+      const cEl = document.getElementById(`col-t-${i}`);
+      if (rEl) rEl.classList.toggle('solved', curR[i] === p.targets.rows[i]);
+      if (cEl) cEl.classList.toggle('solved', curC[i] === p.targets.cols[i]);
+    }
+
+    // grid
+    ctx.strokeStyle = '#f1f1f1';
+    ctx.lineWidth = 1;
+    for (let j = 1; j < p.size; j++) {
+      ctx.beginPath();
+      ctx.moveTo(j * GRID_SIZE, 0);
+      ctx.lineTo(j * GRID_SIZE, canvas.height);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(0, j * GRID_SIZE);
+      ctx.lineTo(canvas.width, j * GRID_SIZE);
+      ctx.stroke();
+    }
+
+    // solve overlay behind tiles
+    if (isSolved) drawVictoryOverlay(now);
+
+    // tiles
+    for (const t of p.tiles) {
+      // snap visual position toward grid when not dragging
+      if (!drag.active) {
+        const tx = t.c * GRID_SIZE + (t.w * GRID_SIZE) / 2;
+        const ty = t.r * GRID_SIZE + (t.h * GRID_SIZE) / 2;
+        t.x += (tx - t.x) * SNAP_SPEED;
+        t.y += (ty - t.y) * SNAP_SPEED;
+      }
+
+      ctx.fillStyle = tileColor(t);
+      ctx.beginPath();
+      ctx.roundRect(
+        t.x - (t.w * GRID_SIZE - 8) / 2,
+        t.y - (t.h * GRID_SIZE - 8) / 2,
+        t.w * GRID_SIZE - 8,
+        t.h * GRID_SIZE - 8,
+        6
+      );
+      ctx.fill();
+
+      // numbers
+      ctx.fillStyle = 'white';
+      ctx.font = '600 22px Outfit';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const left = t.x - (t.w * GRID_SIZE) / 2;
+      const top = t.y - (t.h * GRID_SIZE) / 2;
+      for (let rr = 0; rr < t.h; rr++) {
+        for (let cc = 0; cc < t.w; cc++) {
+          const v = t.vals[rr * t.w + cc];
+          if (!v) continue;
+          const cx = left + cc * GRID_SIZE + GRID_SIZE / 2;
+          const cy = top + rr * GRID_SIZE + GRID_SIZE / 2;
+          ctx.fillText(v, cx, cy);
+        }
+      }
+    }
+
+    requestAnimationFrame(draw);
+  }
+
+  // ================= BUTTONS =================
+  document.getElementById('skipTutorialBtn').onclick = () => {
+    if (!tutorialMode) return;
+
+    const lastTutorialIdx = TUTORIAL_COUNT - 1;
+
+    // If solved inside tutorial, advance within tutorial
+    if (isSolved && currentLvlIdx < lastTutorialIdx) {
+      currentLvlIdx++;
+      loadPuzzle(currentLvlIdx);
+      return;
+    }
+
+    // If solved on final tutorial puzzle, start main game
+    if (isSolved && currentLvlIdx === lastTutorialIdx) {
+      startMainGame();
+      return;
+    }
+
+    // Otherwise behaves as Skip Tutorial
+    skipTutorial();
+  };
+  document.getElementById('restartTutorialBtn').onclick = startTutorial;
+  document.getElementById('playPuzzlesBtn').onclick = startMainGame;
+  document.getElementById('playTutorialBtn').onclick = startTutorial;
+  document.getElementById('playPuzzlesFromModalBtn').onclick = startMainGame;
+
+  document.getElementById('undoBtn').onclick = () => {
+    if (moveHistory.length === 0 || isSolved) return;
+    const state = JSON.parse(moveHistory.pop());
+    for (const s of state) {
+      const tile = p.tiles.find(t => t.id === s.id);
+      if (tile) { tile.r = s.r; tile.c = s.c; }
+    }
+    updateUIState();
+  };
+
+  document.getElementById('resetBtn').onclick = () => {
+    moveHistory = [];
+    for (let i = 0; i < p.tiles.length; i++) {
+      const t = p.tiles[i];
+      t.r = originalScramble[i].r;
+      t.c = originalScramble[i].c;
+      t.x = t.c * GRID_SIZE + (t.w * GRID_SIZE) / 2;
+      t.y = t.r * GRID_SIZE + (t.h * GRID_SIZE) / 2;
+    }
+    isSolved = false;
+    solveAnim = null;
+
+    // clear target transforms
+    for (let i = 0; i < p.size; i++) {
+      const rEl = document.getElementById(`row-t-${i}`);
+      const cEl = document.getElementById(`col-t-${i}`);
+      if (rEl) rEl.style.transform = 'scale(1)';
+      if (cEl) cEl.style.transform = 'scale(1)';
+    }
+
+    updateUIState();
+  };
+
+  document.getElementById('solveNextBtn').onclick = () => {
+    if (tutorialMode) return;
+    if (currentLvlIdx < PUZZLES.length - 1) {
+      currentLvlIdx++;
+      loadPuzzle(currentLvlIdx);
+    }
+  };
+
+  document.getElementById('prevBtn').onclick = () => {
+    const minIdx = tutorialMode ? 0 : TUTORIAL_COUNT;
+    if (currentLvlIdx <= minIdx) return;
+    currentLvlIdx--;
+    loadPuzzle(currentLvlIdx);
+  };
+
+  document.getElementById('nextBtn').onclick = () => {
+    const maxIdx = tutorialMode ? Math.min(TUTORIAL_COUNT - 1, PUZZLES.length - 1) : PUZZLES.length - 1;
+    if (currentLvlIdx >= maxIdx) return;
+    currentLvlIdx++;
+    loadPuzzle(currentLvlIdx);
+  };
+
+  // ================= INIT =================
+  loadPuzzle(0);
+  toggleHelp(true); // show instructions on first load
+  draw();
+</script>
+
+</body>
+</html>
+

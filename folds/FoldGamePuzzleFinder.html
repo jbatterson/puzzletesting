@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FOLD Architect - v4 (Colors + Play Restored)</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Outfit', sans-serif; background: #f8fafc; display: flex; min-height: 100vh; margin: 0; }
+        #sidebar { width: 380px; background: white; border-right: 1px solid #e2e8f0; padding: 32px; height: 100vh; overflow-y: auto; position: sticky; top: 0; flex-shrink: 0; }
+        #game-view { flex-grow: 1; display: flex; flex-direction: column; align-items: center; padding: 40px; overflow-y: auto; }
+        .canvas-container { background: white; border-radius: 24px; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1); padding: 30px; }
+
+        .fold-visual { stroke: #cbd5e1; stroke-width: 1.5px; pointer-events: none; transition: all 0.2s; }
+        .fold-group:hover .fold-visual { stroke: #6366f1; stroke-width: 4px; }
+        .fold-hit { stroke: transparent; stroke-width: 25px; pointer-events: stroke; cursor: pointer; }
+
+        .btn-gen { background: #1e293b; color: white; padding: 14px; border-radius: 8px; font-weight: 600; width: 100%; transition: all 0.2s; }
+        .btn-gen:hover:not(:disabled) { background: #0f172a; transform: translateY(-1px); }
+        .btn-gen:disabled { opacity: 0.5; cursor: wait; }
+
+        textarea { font-family: 'Fira Code', monospace; font-size: 11px; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; width: 100%; height: 120px; padding: 12px; resize: none; outline: none; }
+        input[type="range"] { accent-color: #6366f1; width: 100%; }
+    </style>
+</head>
+<body>
+    <div id="root" class="flex w-full"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- CONSTANTS ---
+        const S=62, H=S*Math.sqrt(3)/2, PAD=40, N=4;
+
+        // UPDATED: add orange + purple
+        const COLORS = [
+            '#1e3a8a', // blue
+            '#16a34a', // green
+            '#dc2626', // red
+            '#f59e0b', // orange
+            '#a855f7', // purple
+        ];
+        const COLOR_NAMES = ['blue','green','red','orange','purple'];
+
+        const up=(r,c)=>(r+c)%2===0;
+        const cent=(r,c)=>({x:PAD+(c+1)*S/2, y:PAD+(up(r,c)?H*(r+2/3):H*(r+1/3))});
+        const pts=(r,c)=>{
+            const x=PAD+c*S/2, y=PAD+r*H;
+            return up(r,c)?`${x+S/2},${y} ${x},${y+H} ${x+S},${y+H}`:`${x},${y} ${x+S},${y} ${x+S/2},${y+H}`;
+        };
+
+        const HEX_POLY = (() => {
+            const L = N * S;
+            const V0 = { x: PAD + S / 2 , y: PAD };
+            const V1 = { x: V0.x + L, y: V0.y };
+            const V2 = { x: V1.x + L / 2, y: V1.y + N * H };
+            const V3 = { x: V2.x - L / 2, y: V2.y + N * H };
+            const V4 = { x: V3.x - L, y: V3.y };
+            const V5 = { x: V4.x - L / 2, y: V4.y - N * H };
+            return [V0, V1, V2, V3, V4, V5];
+        })();
+
+        const isInsideHex = (r, c) => {
+            const p = cent(r, c);
+            let inside = false;
+            for (let i = 0, j = HEX_POLY.length - 1; i < HEX_POLY.length; j = i++) {
+                const xi = HEX_POLY[i].x, yi = HEX_POLY[i].y, xj = HEX_POLY[j].x, yj = HEX_POLY[j].y;
+                if (((yi > p.y) !== (yj > p.y)) && (p.x < (xj - xi) * (p.y - yi) / (yj - yi + 1e-12) + xi)) inside = !inside;
+            }
+            return inside;
+        };
+
+        const snap=(px,py)=>{
+            const re=Math.round((py-PAD)/H), ce=Math.round(2*(px-PAD)/S)-1;
+            let best=Infinity,br=0,bc=0;
+            for(let r=Math.max(0,re-2);r<=Math.min(10,re+2);r++)
+                for(let c=Math.max(0,ce-4);c<=Math.min(20,ce+4);c++){
+                    const p=cent(r,c),d=(p.x-px)**2+(p.y-py)**2;
+                    if(d<best){best=d;br=r;bc=c;}
+                }
+            return [br,bc];
+        };
+
+        const applyFold = (board, line) => {
+            const next = { ...board };
+            const c2 = Math.cos(2 * line.theta), s2 = Math.sin(2 * line.theta);
+            for (const [key, color] of Object.entries(board)) {
+                const [r, c] = key.split(',').map(Number);
+                const cp = cent(r, c);
+                const dx = cp.x - line.px, dy = cp.y - line.py;
+                const nx = line.px + dx * c2 + dy * s2, ny = line.py + dx * s2 - dy * c2;
+                const [nr, nc] = snap(nx, ny);
+                const targetKey = `${nr},${nc}`;
+                const distSq = (cent(nr, nc).x - nx)**2 + (cent(nr, nc).y - ny)**2;
+                if (distSq > 40 || up(r, c) === up(nr, nc) || !isInsideHex(nr, nc)) return null;
+                if (next[targetKey] && next[targetKey] !== color) return null;
+                next[targetKey] = color;
+            }
+            return next;
+        };
+
+        const ALL_TRIANGLES = (() => {
+            const tris = [];
+            for (let r = 0; r <= 8; r++)
+                for (let c = 0; c <= 16; c++)
+                    if (isInsideHex(r, c)) tris.push({ r, c, key: `${r},${c}` });
+            return tris;
+        })();
+
+        const ALL_LINES = (() => {
+            const seen = {};
+            const lines = [];
+            const addLine = (theta, px, py) => {
+                const tn = ((theta % Math.PI) + Math.PI) % Math.PI;
+                const a = -Math.sin(tn), b = Math.cos(tn), c = a * px + b * py;
+                const key = `${Math.round(tn*1000)}_${Math.round(c*100)}`;
+                if (seen[key]) return;
+                const hits = [];
+                for (let i = 0; i < HEX_POLY.length; i++) {
+                    const p1 = HEX_POLY[i], p2 = HEX_POLY[(i + 1) % HEX_POLY.length], dx = p2.x - p1.x, dy = p2.y - p1.y, denom = a * dx + b * dy;
+                    if (Math.abs(denom) < 1e-9) continue;
+                    const t = (c - (a * p1.x + b * p1.y)) / denom;
+                    if (t >= -0.01 && t <= 1.01) hits.push({ x: p1.x + t * dx, y: p1.y + t * dy });
+                }
+                if (hits.length >= 2) {
+                    let dMax = -1, pA = hits[0], pB = hits[1];
+                    for(let i=0;i<hits.length;i++) for(let j=i+1;j<hits.length;j++){
+                        const d = (hits[i].x-hits[j].x)**2 + (hits[i].y-hits[j].y)**2;
+                        if(d > dMax){ dMax=d; pA=hits[i]; pB=hits[j]; }
+                    }
+                    seen[key] = true;
+                    lines.push({ lineKey: key, theta: tn, px, py, x1: pA.x, y1: pA.y, x2: pB.x, y2: pB.y });
+                }
+            };
+            for (let r = -1; r <= 9; r++) for (let c = -1; c <= 17; c++) {
+                const x = PAD + c * S / 2, y = PAD + r * H;
+                if (up(r, c)) { addLine(Math.atan2(H,-S/2),x+S/2,y); addLine(Math.atan2(H,S/2),x+S/2,y); addLine(0,x,y+H); }
+                else { addLine(0,x,y); addLine(Math.atan2(H,-S/2),x,y); addLine(Math.atan2(H,S/2),x+S,y); }
+            }
+            return lines;
+        })();
+
+        const boardToId = (b) => Object.entries(b).sort().map(e => `${e[0]}:${e[1]}`).join('|');
+
+        const getShortestPath = (start, target, limit) => {
+            const targetId = boardToId(target);
+            const startId = boardToId(start);
+            if (startId === targetId) return 0;
+            let queue = [{ b: start, d: 0 }];
+            let visited = new Set([startId]);
+            let head = 0;
+            while(head < queue.length) {
+                const { b, d } = queue[head++];
+                if (d >= limit) continue;
+                for (const line of ALL_LINES) {
+                    const next = applyFold(b, line);
+                    if (next) {
+                        const id = boardToId(next);
+                        if (id === targetId) return d + 1;
+                        if (!visited.has(id)) { visited.add(id); queue.push({ b: next, d: d + 1 }); }
+                    }
+                }
+            }
+            return Infinity;
+        };
+
+        const App = () => {
+            const [puzzles, setPuzzles] = useState([]);
+            const [idx, setIdx] = useState(0);
+            const [depth, setDepth] = useState(3);
+            const [shared, setShared] = useState(1);
+
+            // UPDATED: counts include orange + purple
+            const [counts, setCounts] = useState({ blue: 1, green: 0, red: 0, orange: 0, purple: 0 });
+            const [status, setStatus] = useState("System Ready");
+            const [isGen, setIsGen] = useState(false);
+
+            // Play states
+            const [playBoard, setPlayBoard] = useState({});
+            const [playFolds, setPlayFolds] = useState(0);
+            const [history, setHistory] = useState([]);
+            const [movesHistory, setMovesHistory] = useState([]);
+
+            const find = async () => {
+                setIsGen(true);
+                setStatus("Initializing...");
+                const results = [];
+                let attempts = 0;
+
+                while (results.length < 5 && attempts < 2000) {
+                    attempts++;
+                    if (attempts % 50 === 0) {
+                        setStatus(`Scanning Depth ${depth} (Attempt ${attempts})...`);
+                        await new Promise(r => setTimeout(r, 0));
+                    }
+
+                    // UPDATED: total triangles includes new colors
+                    const totalT =
+                        (counts.blue||0) +
+                        (counts.green||0) +
+                        (counts.red||0) +
+                        (counts.orange||0) +
+                        (counts.purple||0);
+
+                    if (totalT <= 0) continue;
+
+                    let startBoard = {};
+
+                    // pick a connected cluster of totalT triangles (same as original)
+                    let keys = [ALL_TRIANGLES[Math.floor(Math.random()*ALL_TRIANGLES.length)].key];
+                    while(keys.length < totalT) {
+                        const neighbors = new Set();
+                        keys.forEach(k => {
+                            const [r,c] = k.split(',').map(Number);
+                            const res = [[r, c-1], [r, c+1], up(r,c) ? [r+1, c] : [r-1, c]];
+                            res.filter(([nr, nc]) => isInsideHex(nr, nc)).forEach(n => {
+                                const nk = n.join(',');
+                                if (!keys.includes(nk)) neighbors.add(nk);
+                            });
+                        });
+                        if (neighbors.size === 0) break;
+                        keys.push([...neighbors][Math.floor(Math.random()*neighbors.size)]);
+                    }
+
+                    // shared edge counting (kept exactly)
+                    let edges = 0;
+                    for(let i=0; i<keys.length; i++) for(let j=i+1; j<keys.length; j++) {
+                        const [r1,c1] = keys[i].split(',').map(Number);
+                        const [r2,c2] = keys[j].split(',').map(Number);
+                        if ((r1===r2 && Math.abs(c1-c2)===1) || (c1===c2 && Math.abs(r1-r2)===1)) edges++;
+                    }
+                    if (edges !== shared) continue;
+
+                    // assign colors
+                    let sKeys = [...keys].sort(() => Math.random() - 0.5);
+                    for(let i=0; i<(counts.blue||0); i++) startBoard[sKeys.pop()] = COLORS[0];
+                    for(let i=0; i<(counts.green||0); i++) startBoard[sKeys.pop()] = COLORS[1];
+                    for(let i=0; i<(counts.red||0); i++) startBoard[sKeys.pop()] = COLORS[2];
+                    for(let i=0; i<(counts.orange||0); i++) startBoard[sKeys.pop()] = COLORS[3];
+                    for(let i=0; i<(counts.purple||0); i++) startBoard[sKeys.pop()] = COLORS[4];
+
+                    let curr = {...startBoard};
+                    let valid = true;
+                    for(let f=0; f<depth; f++) {
+                        const next = applyFold(curr, ALL_LINES[Math.floor(Math.random()*ALL_LINES.length)]);
+                        if (!next) { valid = false; break; }
+                        curr = next;
+                    }
+
+                    if (valid && Object.keys(curr).length > Object.keys(startBoard).length) {
+                        const min = getShortestPath(startBoard, curr, depth);
+                        if (min === depth) results.push({ start: startBoard, target: curr, folds: depth });
+                    }
+                }
+
+                setPuzzles(results);
+                setIdx(0);
+                setIsGen(false);
+                setStatus(results.length > 0 ? `Found ${results.length} valid puzzles` : "Generation Failed.");
+            };
+
+            useEffect(() => {
+                if (puzzles[idx]) {
+                    setPlayBoard(puzzles[idx].start);
+                    setPlayFolds(puzzles[idx].folds);
+                    setHistory([puzzles[idx].start]);
+                    setMovesHistory([puzzles[idx].folds]);
+                }
+            }, [puzzles, idx]);
+
+            const isWon = puzzles[idx] && boardToId(playBoard) === boardToId(puzzles[idx].target);
+
+            const handleUndo = () => {
+                if (history.length > 1) {
+                    const newHistory = [...history];
+                    const newMovesHistory = [...movesHistory];
+                    newHistory.pop();
+                    newMovesHistory.pop();
+                    setPlayBoard(newHistory[newHistory.length - 1]);
+                    setPlayFolds(newMovesHistory[newMovesHistory.length - 1]);
+                    setHistory(newHistory);
+                    setMovesHistory(newMovesHistory);
+                }
+            };
+
+            const handleReset = () => {
+                if (puzzles[idx]) {
+                    setPlayBoard(puzzles[idx].start);
+                    setPlayFolds(puzzles[idx].folds);
+                    setHistory([puzzles[idx].start]);
+                    setMovesHistory([puzzles[idx].folds]);
+                }
+            };
+
+            return (
+                <React.Fragment>
+                    <div id="sidebar">
+                        <div className="mb-8">
+                            <h1 className="text-2xl font-bold text-slate-900 tracking-tighter">FOLD <span className="text-indigo-600">ARCHITECT</span></h1>
+                            <div className="mt-2 flex items-center gap-2">
+                                <span className={`w-2 h-2 rounded-full ${isGen ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`}></span>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{status}</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-3 gap-2">
+                                {COLOR_NAMES.map(c => (
+                                    <div key={c}>
+                                        <label className="text-[9px] font-bold uppercase text-slate-400 block mb-1">{c}</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            value={counts[c] ?? 0}
+                                            onChange={e => setCounts({ ...counts, [c]: +e.target.value })}
+                                            className="w-full border border-slate-200 rounded p-2 text-xs outline-none focus:ring-1 ring-indigo-500"
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div>
+                                <div className="flex justify-between mb-2">
+                                    <label className="text-[9px] font-bold uppercase text-slate-400">Shared Edges</label>
+                                    <span className="text-xs font-bold text-indigo-600">{shared}</span>
+                                </div>
+                                <input type="range" min="0" max="8" value={shared} onChange={e => setShared(+e.target.value)} />
+                            </div>
+
+                            <div>
+                                <label className="text-[9px] font-bold uppercase text-slate-400 block mb-1">Required Folds (Difficulty)</label>
+                                <input type="number" min="1" max="5" value={depth} onChange={e => setDepth(+e.target.value)} className="w-full border border-slate-200 rounded p-2 text-xs outline-none" />
+                            </div>
+
+                            <button onClick={find} disabled={isGen} className="btn-gen">{isGen ? 'Validating Puzzles...' : 'Generate New Batch'}</button>
+                        </div>
+
+                        {puzzles.length > 0 && (
+                            <div className="mt-8 pt-8 border-t space-y-4">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button onClick={() => setIdx(Math.max(0, idx - 1))} className="text-[10px] font-bold py-2 bg-slate-100 hover:bg-slate-200 rounded text-slate-600">PREV</button>
+                                    <button onClick={() => setIdx(Math.min(puzzles.length - 1, idx + 1))} className="text-[10px] font-bold py-2 bg-slate-100 hover:bg-slate-200 rounded text-slate-600">NEXT</button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button onClick={handleUndo} disabled={history.length <= 1} className="text-[10px] font-bold py-2 bg-slate-800 text-white hover:bg-slate-700 rounded disabled:opacity-30">UNDO</button>
+                                    <button onClick={handleReset} className="text-[10px] font-bold py-2 bg-amber-100 hover:bg-amber-200 rounded text-amber-700">RESET</button>
+                                </div>
+                                <div className="text-center">
+                                    <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Puzzle {idx + 1} of {puzzles.length}</span>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-bold uppercase text-slate-400">Copy Level Data:</label>
+                                    <textarea
+                                        readOnly
+                                        className="w-full h-32 p-2 text-xs font-mono bg-slate-900 text-emerald-400 rounded-lg"
+                                        value={`{start: ${JSON.stringify(puzzles[idx].start)},
+        target: ${JSON.stringify(puzzles[idx].target)},
+        folds: ${puzzles[idx].folds}},`}
+                                        onClick={(e) => { e.target.select(); navigator.clipboard.writeText(e.target.value); setStatus("Level Copied!"); }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div id="game-view">
+                        <div className="text-center mb-8">
+                            <h2 className={`text-5xl font-bold tracking-tighter transition-all ${isWon ? 'text-emerald-500 scale-105' : (playFolds === 0 ? 'text-red-500' : 'text-slate-800')}`}>
+                                {isWon ? 'VERIFIED' : `${playFolds} MOVES`}
+                            </h2>
+                            <p className="text-[10px] uppercase font-bold text-slate-300 tracking-[0.3em] mt-3">Logic Preview</p>
+                        </div>
+
+                        <div className="canvas-container">
+                            {(() => {
+                                let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                                HEX_POLY.forEach(p => { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); });
+                                const gridW = maxX - minX, gridH = maxY - minY, canvasSize = 500;
+                                const tx = (canvasSize - gridW) / 2 - minX, ty = (canvasSize - gridH) / 2 - minY;
+                                return (
+                                    <svg width={canvasSize} height={canvasSize} viewBox={`0 0 ${canvasSize} ${canvasSize}`}>
+                                        <g transform={`translate(${tx}, ${ty})`}>
+                                            {ALL_TRIANGLES.map(t => <polygon key={t.key} points={pts(t.r,t.c)} fill="none" stroke="#f1f5f9" strokeWidth="1.5" />)}
+                                            {puzzles[idx] && Object.entries(puzzles[idx].target).map(([k, col]) => { const [r, c] = k.split(',').map(Number); return <polygon key={`t-${k}`} points={pts(r,c)} fill={col} opacity={0.1} stroke={col} strokeWidth="2" />; })}
+                                            {Object.entries(playBoard).map(([k, col]) => { const [r, c] = k.split(',').map(Number); return <polygon key={`p-${k}`} points={pts(r,c)} fill={col} />; })}
+                                            {ALL_LINES.map(l => (
+                                                <g key={l.lineKey} className="fold-group" onClick={() => {
+                                                    if (playFolds <= 0 || isWon) return;
+                                                    const next = applyFold(playBoard, l);
+                                                    if (next) {
+                                                        setPlayBoard(next);
+                                                        setPlayFolds(f => f - 1);
+                                                        setHistory(prev => [...prev, next]);
+                                                        setMovesHistory(prev => [...prev, playFolds - 1]);
+                                                    }
+                                                }}>
+                                                    <line x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} className="fold-hit" />
+                                                    <line x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} className="fold-visual" />
+                                                </g>
+                                            ))}
+                                        </g>
+                                    </svg>
+                                );
+                            })()}
+                        </div>
+                    </div>
+                </React.Fragment>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
