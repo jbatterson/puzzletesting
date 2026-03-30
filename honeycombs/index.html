@@ -16,8 +16,11 @@
     flex-direction: column;
     align-items: center;
     min-height: 100vh;
+    height: 100vh;
+    height: 100dvh;
+    height: 100svh;
     overflow-x: hidden;
-    overflow-y: auto;
+    overflow-y: hidden;
   }
 
   /* ── TOP BAR ── */
@@ -70,10 +73,6 @@
     padding: 6px 16px 0;
     flex-shrink: 0;
   }
-  .meta-diff {
-    width: 100%;
-    text-align: center;
-  }
   .meta-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #888; }
   .meta-value { font-size: 1.1rem; font-weight: 700; }
 
@@ -124,6 +123,7 @@
     justify-content: center;
     align-items: center;
     padding: 0 8px;
+    max-height: 100%;
   }
   #grid-container {
     position: relative;
@@ -186,8 +186,6 @@
     flex-shrink: 0;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
-    position: sticky;
-    bottom: 0;
     background: #fff;
   }
   .kb-row {
@@ -473,10 +471,6 @@
     <span id="puzzle-index-label">Puzzle 1</span>
     <button class="nav-btn" id="btn-next" aria-label="Next puzzle">&#8594;</button>
   </div>
-  <div class="meta-diff">
-    <div class="meta-label">Difficulty</div>
-    <div class="meta-value" id="diff-label">Small</div>
-  </div>
 </div>
 
 <!-- HEX GRID -->
@@ -578,7 +572,7 @@ let HEX_R     = 32    // circumradius (responsive)
 let HEX_W     = HEX_R * Math.sqrt(3) + HEX_GAP   // center-to-center horizontal
 let HEX_H     = HEX_R * 2                          // center-to-center vertical (before 0.75 factor)
 let HEX_VER   = HEX_H * 0.75 + HEX_GAP * 0.577    // center-to-center vertical (with gap)
-const HEX_R_MIN = 18
+const HEX_R_MIN = 12
 // Universal cap across all sizes: max hex height ≈ 2×40 = 80px
 const HEX_R_MAX = 40
 
@@ -881,7 +875,6 @@ function reflowGeometryForCurrentState() {
 
 const svg = document.getElementById('hex-grid')
 const keyboard = document.getElementById('keyboard')
-const diffLabel = document.getElementById('diff-label')
 const puzzleLabel = document.getElementById('puzzle-index-label')
 const btnPrev = document.getElementById('btn-prev')
 const btnNext = document.getElementById('btn-next')
@@ -1273,11 +1266,7 @@ function renderKeyboard() {
   if (hasBottom) keyboard.appendChild(bottom)
 }
 
-const DIFF_LABELS = { small: 'Small', medium: 'Medium', large: 'Large' }
-
 function renderMeta() {
-  const puzzle = currentPuzzle()
-  diffLabel.textContent = DIFF_LABELS[puzzle.size] ?? puzzle.size
   puzzleLabel.textContent = `Puzzle ${state.puzzleIdx + 1}`
   btnPrev.disabled = state.puzzleIdx === 0
   btnNext.disabled = state.puzzleIdx === PUZZLES.length - 1
