@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Honeycomb</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
+<title>Honeycombs</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -80,13 +80,24 @@
   .nav-btn:disabled { color: #ccc; cursor: default; }
   #puzzle-index-label { font-size: 0.85rem; font-weight: 600; }
 
+  /* Touch: avoid accidental gesture behaviors on interactive controls */
+  button {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
   /* ── HONEYCOMB GRID ── */
   #grid-container {
     position: relative;
     flex-shrink: 0;
     margin: 12px auto 0;
   }
-  svg#hex-grid { display: block; overflow: visible; }
+  svg#hex-grid {
+    display: block;
+    overflow: visible;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
 
   /* hex cell styles */
   .hex-cell { cursor: pointer; }
@@ -128,6 +139,8 @@
     max-width: 480px;
     padding: 0 10px;
     align-items: center;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
   .kb-row {
     display: flex;
@@ -144,6 +157,8 @@
     cursor: pointer;
     transition: background 0.12s, color 0.12s, opacity 0.12s;
     display: flex; align-items: center; justify-content: center;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
   .kb-key.available {
     background: #1a1a2e;
@@ -995,7 +1010,7 @@ function renderGrid() {
     g.appendChild(text)
 
     if (!cell.isClue) {
-      g.addEventListener('click', (e) => { e.stopPropagation(); handleCellClick(cell.row, cell.col) })
+      g.addEventListener('pointerup', (e) => { e.stopPropagation(); handleCellClick(cell.row, cell.col) })
     }
 
     cellsGroup.appendChild(g)
@@ -1061,7 +1076,7 @@ function renderKeyboard() {
       btn.className = cls
       btn.textContent = num
       if (!isFixedKey) {
-        btn.addEventListener('click', (e) => { e.stopPropagation(); handleKeyPress(num) })
+        btn.addEventListener('pointerup', (e) => { e.stopPropagation(); handleKeyPress(num) })
       }
       rowDiv.appendChild(btn)
     }
@@ -1077,7 +1092,7 @@ function renderKeyboard() {
       icon.className = 'fa-solid fa-delete-left'
       icon.setAttribute('aria-hidden', 'true')
       bs.appendChild(icon)
-      bs.addEventListener('click', (e) => { e.stopPropagation(); handleBackspace() })
+      bs.addEventListener('pointerup', (e) => { e.stopPropagation(); handleBackspace() })
       rowDiv.appendChild(bs)
     }
 
