@@ -114,6 +114,7 @@
     justify-content: center;
     align-items: stretch;
     padding: 8px 0 0;
+    overflow: hidden;
   }
   #grid-shell {
     width: 100%;
@@ -124,6 +125,7 @@
     align-items: center;
     padding: 0 8px;
     max-height: 100%;
+    overflow: hidden;
   }
   #grid-container {
     position: relative;
@@ -132,6 +134,9 @@
     display: flex;
     justify-content: center;
     align-items: center;
+    max-width: 100%;
+    max-height: 100%;
+    overflow: hidden;
   }
   svg#hex-grid {
     display: block;
@@ -611,8 +616,8 @@ function measureGridForRadius(size, radius) {
 
 function chooseHexRadius(size) {
   const gridShell = document.getElementById('grid-shell')
-  const availW = Math.max(260, Math.floor((gridShell?.clientWidth || window.innerWidth) - 4))
-  const availH = Math.max(220, Math.floor((gridShell?.clientHeight || window.innerHeight * 0.45) - 4))
+  const availW = Math.floor((gridShell?.clientWidth || window.innerWidth) - 4)
+  const availH = Math.floor((gridShell?.clientHeight || window.innerHeight * 0.35) - 4)
   // Start from the same radius for all puzzles (uniform hex size when space allows)
   let radius = HEX_R_MAX
   for (let i = 0; i < 3; i++) {
