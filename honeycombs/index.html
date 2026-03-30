@@ -16,9 +16,8 @@
     flex-direction: column;
     align-items: center;
     min-height: 100vh;
-    height: 100vh;
-    height: 100dvh;
     overflow-x: hidden;
+    overflow-y: auto;
   }
 
   /* ── TOP BAR ── */
@@ -187,6 +186,9 @@
     flex-shrink: 0;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+    position: sticky;
+    bottom: 0;
+    background: #fff;
   }
   .kb-row {
     display: flex;
