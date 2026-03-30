@@ -16,6 +16,8 @@
     flex-direction: column;
     align-items: center;
     min-height: 100vh;
+    height: 100vh;
+    height: 100dvh;
     overflow-x: hidden;
   }
 
@@ -26,12 +28,21 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
     padding: 8px 12px;
     border-bottom: 2px solid #1a1a2e;
     flex-shrink: 0;
   }
-  .topbar-side { display: flex; gap: 6px; align-items: center; }
+  .topbar-slot {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+  }
+  .topbar-slot:first-child { justify-content: flex-start; }
+  .topbar-slot:last-child { justify-content: flex-end; }
   .topbar-title {
+    flex: 0 0 auto;
     font-size: 1.3rem;
     font-weight: 800;
     letter-spacing: 0.03em;
@@ -52,11 +63,17 @@
   /* ── PUZZLE META ── */
   #meta {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
     width: 100%;
     max-width: 480px;
     padding: 6px 16px 0;
+    flex-shrink: 0;
+  }
+  .meta-diff {
+    width: 100%;
+    text-align: center;
   }
   .meta-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #888; }
   .meta-value { font-size: 1.1rem; font-weight: 700; }
@@ -65,8 +82,10 @@
   #puzzle-nav {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 10px;
     padding: 4px 0 0;
+    width: 100%;
   }
   .nav-btn {
     background: none;
@@ -87,14 +106,40 @@
   }
 
   /* ── HONEYCOMB GRID ── */
+  #play-area {
+    width: 100%;
+    max-width: 480px;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: stretch;
+    padding: 8px 0 0;
+  }
+  #grid-shell {
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0 8px;
+  }
   #grid-container {
     position: relative;
-    flex-shrink: 0;
-    margin: 12px auto 0;
+    flex-shrink: 1;
+    margin: 0 auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
   }
   svg#hex-grid {
     display: block;
     overflow: visible;
+    /* natural pixel dimensions set by JS; shrinks to fit container, never stretches */
+    max-width: 100%;
+    max-height: 100%;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
   }
@@ -114,7 +159,7 @@
   .hex-label {
     font-family: 'Outfit', sans-serif;
     font-weight: 700;
-    font-size: 14px;
+    font-size: 16px;
     fill: #1a1a2e;
     dominant-baseline: central;
     text-anchor: middle;
@@ -134,11 +179,12 @@
     display: flex;
     flex-direction: column;
     gap: 5px;
-    margin: 14px auto 16px;
+    margin: 8px auto 0;
     width: 100%;
     max-width: 480px;
-    padding: 0 10px;
+    padding: 0 10px calc(8px + env(safe-area-inset-bottom));
     align-items: center;
+    flex-shrink: 0;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
   }
@@ -146,6 +192,8 @@
     display: flex;
     gap: 5px;
     justify-content: center;
+    width: 100%;
+    max-width: 460px;
   }
   .kb-key {
     width: 40px; height: 40px;
@@ -153,7 +201,7 @@
     border: none;
     font-family: 'Outfit', sans-serif;
     font-weight: 700;
-    font-size: 0.95rem;
+    font-size: 1.05rem;
     cursor: pointer;
     transition: background 0.12s, color 0.12s, opacity 0.12s;
     display: flex; align-items: center; justify-content: center;
@@ -285,7 +333,8 @@
   .hc-bottom-strip {
     width: 100%;
     max-width: 460px;
-    margin-top: 10px;
+    margin-top: auto;
+    padding-top: 0;
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -408,16 +457,10 @@
 
 <!-- TOP BAR -->
 <div id="topbar">
-  <div class="topbar-side">
-    <button class="icon-btn" id="btn-new" title="New puzzle" aria-label="New puzzle">+</button>
+  <div class="topbar-slot" aria-hidden="true"></div>
+  <div class="topbar-title">Honeycombs</div>
+  <div class="topbar-slot">
     <button class="icon-btn" id="btn-info" title="How to play" aria-label="How to play">?</button>
-  </div>
-  <div class="topbar-title">🐝 Honeycomb</div>
-  <div class="topbar-side">
-    <div style="text-align:right">
-      <div class="meta-label">Guesses</div>
-      <div class="meta-value" id="guess-count">0</div>
-    </div>
   </div>
 </div>
 
@@ -428,15 +471,19 @@
     <span id="puzzle-index-label">Puzzle 1</span>
     <button class="nav-btn" id="btn-next" aria-label="Next puzzle">&#8594;</button>
   </div>
-  <div style="text-align:right">
+  <div class="meta-diff">
     <div class="meta-label">Difficulty</div>
-    <div class="meta-value" id="diff-label">Easy</div>
+    <div class="meta-value" id="diff-label">Small</div>
   </div>
 </div>
 
 <!-- HEX GRID -->
-<div id="grid-container">
-  <svg id="hex-grid"></svg>
+<div id="play-area">
+  <div id="grid-shell">
+    <div id="grid-container">
+      <svg id="hex-grid"></svg>
+    </div>
+  </div>
 </div>
 
 <!-- KEYBOARD -->
@@ -446,11 +493,8 @@
 <div id="overlay">
   <div id="modal">
     <h2>How to Play</h2>
-    <p>Fill every empty hexagon with a number so that the complete sequence <strong>1 → N</strong> traces a connected path — each consecutive pair of numbers must share an edge.</p>
-    <p>After you place a number, the <strong>next</strong> one highlights on the keyboard. Tap an empty cell beside that previous number to place it in one tap. Tap any other empty cell (or a filled cell) to select it and clear the highlight — then pick a number or continue from there.</p>
-    <p>Tap the header, a clue hex, or anywhere outside the grid or keyboard to clear selection and the blue highlight—or tap the selected hex or highlighted number again. Tap any dark number to choose the active value, or a gray number after selecting a cell to move that value (the old cell empties and the replaced number returns to the keyboard).</p>
-    <p>If a hex is selected (blue ring), number keys type into that hex. Use the <strong>backspace</strong> key on the keyboard row to clear that hex, or <strong>Undo</strong> to step back through moves. Press <strong>Escape</strong> to clear selection so a number key picks the blue keyboard “pen” for tap-to-place on empties.</p>
-    <p>When all cells are filled, use the <strong>Check</strong> button below the keyboard to trace the path from <strong>1</strong> through consecutive numbers. A green line means a valid path; red means the path got stuck. The line fades after a few seconds or when you interact.</p>
+    <p>Fill the grid so <strong>1 through N</strong> form one connected path (each step shares an edge with the next). Orange cells are fixed clues.</p>
+    <p><strong>Keys:</strong> tap digits to enter; delete clears the selected cell; <strong>Undo</strong> / <strong>Reset</strong>; when full, <strong>Check</strong> shows the path (green = OK, red = broken). Tap outside the grid or press <strong>Esc</strong> to clear your “pen” and selection.</p>
     <button class="close-btn" id="btn-close-modal">Play</button>
   </div>
 </div>
@@ -458,23 +502,23 @@
 <script>
 // ═══════════════════════════════════════════════════════════
 // PUZZLE DATA
-// Format: { size: 'easy'|'medium'|'hard', clues: [[row, col, value], ...] }
+// Format: { size: 'small'|'medium'|'large', clues: [[row, col, value], ...] }
 // Coordinates use offset hex grid:
-//   easy   3-4-3  (rows 0..2, cols depend on row)
+//   small   3-4-3  (rows 0..2, cols depend on row)
 //   medium 3-4-4-3
-//   hard   3-4-5-4-3
+//   large   3-4-5-4-3
 // ═══════════════════════════════════════════════════════════
 
 const PUZZLES = [
-  // ── EASY (3-4-3, 10 cells) ────────────────────────────────
+  // ── SMALL (3-4-3, 10 cells) ────────────────────────────────
 
-  { size: 'easy', clues: [[2,0,1], [1,2,3], [1,3,6]] },
-  { size: 'easy', clues: [[2,2,1], [2,0,4], [1,0,6]] },
-  { size: 'easy', clues: [[1,2,2], [2,1,4], [2,0,6]] },
-  { size: 'easy', clues: [[2,0,1], [2,1,4], [1,0,10]] },
-  { size: 'easy', clues: [[0,2,2], [1,3,3], [0,0,6]] },
-  { size: 'easy', clues: [[0,2,1], [1,3,6], [2,0,9]] },
-  { size: 'easy', clues: [[2,0,2], [2,2,5], [1,2,6]] },
+  { size: 'small', clues: [[2,0,1], [1,2,3], [1,3,6]] },
+  { size: 'small', clues: [[2,2,1], [2,0,4], [1,0,6]] },
+  { size: 'small', clues: [[1,2,2], [2,1,4], [2,0,6]] },
+  { size: 'small', clues: [[2,0,1], [2,1,4], [1,0,10]] },
+  { size: 'small', clues: [[0,2,2], [1,3,3], [0,0,6]] },
+  { size: 'small', clues: [[0,2,1], [1,3,6], [2,0,9]] },
+  { size: 'small', clues: [[2,0,2], [2,2,5], [1,2,6]] },
 
   // ── MEDIUM (3-4-4-3, 14 cells) ───────────────────────────
   { size: 'medium', clues: [[0,1,4], [1,2,6], [2,2,7], [1,3,13]] },
@@ -485,14 +529,14 @@ const PUZZLES = [
   { size: 'medium', clues: [[0,0,3], [2,1,5], [1,3,9], [2,2,11]] },
   { size: 'medium', clues: [[1,1,3], [1,2,4], [2,3,8], [0,1,11]] },
 
-  // ── HARD (3-4-5-4-3, 19 cells) ──────────────────────────
-  { size: 'hard', clues: [[4,0,1], [2,2,6], [1,3,14], [4,1,18], [3,1,19]] },
-  { size: 'hard', clues: [[4,1,1], [1,1,8], [2,2,15], [2,3,16], [3,3,18]] },
-  { size: 'hard', clues: [[4,2,1], [2,2,4], [2,1,8], [4,0,11], [1,3,18]] },
-  { size: 'hard', clues: [[1,1,1], [2,1,2], [0,0,7], [0,2,10], [2,2,14]] },
-  { size: 'hard', clues: [[1,0,2], [2,3,5], [0,2,9], [4,1,14], [3,2,15]] },
-  { size: 'hard', clues: [[1,3,1], [3,2,7], [2,3,10], [3,0,16], [1,0,18]] },
-  { size: 'hard', clues: [[2,1,2], [2,2,6], [1,1,10], [3,3,16], [4,2,17]] },
+  // ── LARGE (3-4-5-4-3, 19 cells) ──────────────────────────
+  { size: 'large', clues: [[4,0,1], [2,2,6], [1,3,14], [4,1,18], [3,1,19]] },
+  { size: 'large', clues: [[4,1,1], [1,1,8], [2,2,15], [2,3,16], [3,3,18]] },
+  { size: 'large', clues: [[4,2,1], [2,2,4], [2,1,8], [4,0,11], [1,3,18]] },
+  { size: 'large', clues: [[1,1,1], [2,1,2], [0,0,7], [0,2,10], [2,2,14]] },
+  { size: 'large', clues: [[1,0,2], [2,3,5], [0,2,9], [4,1,14], [3,2,15]] },
+  { size: 'large', clues: [[1,3,1], [3,2,7], [2,3,10], [3,0,16], [1,0,18]] },
+  { size: 'large', clues: [[2,1,2], [2,2,6], [1,1,10], [3,3,16], [4,2,17]] },
 
 ]
 
@@ -522,16 +566,71 @@ const GRID_DEFS = {
   //             expressed as multiples of HEX_W.
   // 0 = aligned with widest row's left edge.
   // 0.5 = shifted right by half a hex width.
-  easy:   { rows: [3, 4, 3], rowOffsets: [0.5, 0, 0.5] },
+  small:  { rows: [3, 4, 3], rowOffsets: [0.5, 0, 0.5] },
   medium: { rows: [3, 4, 4, 3], rowOffsets: [0.5, 0, 0.5, 1.0] },
-  hard:   { rows: [3, 4, 5, 4, 3], rowOffsets: [1.0, 0.5, 0, 0.5, 1.0] },
+  large:  { rows: [3, 4, 5, 4, 3], rowOffsets: [1.0, 0.5, 0, 0.5, 1.0] },
 }
 
-const HEX_R   = 32    // circumradius
 const HEX_GAP = 3     // gap between hex edges in pixels
-const HEX_W   = HEX_R * Math.sqrt(3) + HEX_GAP   // center-to-center horizontal
-const HEX_H   = HEX_R * 2                          // center-to-center vertical (before 0.75 factor)
-const HEX_VER = HEX_H * 0.75 + HEX_GAP * 0.577    // center-to-center vertical (with gap)
+let HEX_R     = 32    // circumradius (responsive)
+let HEX_W     = HEX_R * Math.sqrt(3) + HEX_GAP   // center-to-center horizontal
+let HEX_H     = HEX_R * 2                          // center-to-center vertical (before 0.75 factor)
+let HEX_VER   = HEX_H * 0.75 + HEX_GAP * 0.577    // center-to-center vertical (with gap)
+const HEX_R_MIN = 18
+// Universal cap across all sizes: max hex height ≈ 2×40 = 80px
+const HEX_R_MAX = 40
+
+function setHexGeometry(radius) {
+  HEX_R = Math.max(HEX_R_MIN, Math.min(HEX_R_MAX, radius))
+  HEX_W = HEX_R * Math.sqrt(3) + HEX_GAP
+  HEX_H = HEX_R * 2
+  HEX_VER = HEX_H * 0.75 + HEX_GAP * 0.577
+}
+
+function measureGridForRadius(size, radius) {
+  const { rows, rowOffsets } = GRID_DEFS[size]
+  const hexW = radius * Math.sqrt(3) + HEX_GAP
+  const hexVer = radius * 1.5 + HEX_GAP * 0.577
+  const PAD = 10
+  let minCx = Infinity
+  let maxCx = -Infinity
+  let minCy = Infinity
+  let maxCy = -Infinity
+  for (let r = 0; r < rows.length; r++) {
+    const xBase = rowOffsets[r] * hexW
+    for (let c = 0; c < rows[r]; c++) {
+      const cx = xBase + c * hexW + hexW / 2
+      const cy = r * hexVer + radius
+      minCx = Math.min(minCx, cx)
+      maxCx = Math.max(maxCx, cx)
+      minCy = Math.min(minCy, cy)
+      maxCy = Math.max(maxCy, cy)
+    }
+  }
+  return {
+    w: (maxCx - minCx) + radius * 2 + PAD * 2,
+    h: (maxCy - minCy) + radius * 2 + PAD * 2,
+  }
+}
+
+function chooseHexRadius(size) {
+  const gridShell = document.getElementById('grid-shell')
+  const availW = Math.max(260, Math.floor((gridShell?.clientWidth || window.innerWidth) - 4))
+  const availH = Math.max(220, Math.floor((gridShell?.clientHeight || window.innerHeight * 0.45) - 4))
+  // Start from the same radius for all puzzles (uniform hex size when space allows)
+  let radius = HEX_R_MAX
+  for (let i = 0; i < 3; i++) {
+    const m = measureGridForRadius(size, radius)
+    const scale = Math.min(availW / m.w, availH / m.h)
+    if (!Number.isFinite(scale) || scale <= 0) break
+    if (scale < 0.995) {
+      radius *= scale
+    } else {
+      break
+    }
+  }
+  return Math.max(HEX_R_MIN, Math.min(HEX_R_MAX, radius))
+}
 
 // Pointy-top hex polygon points
 function hexPoints(cx, cy, r) {
@@ -585,7 +684,6 @@ let state = {
   puzzleIdx: 0,
   cells: [],        // [{row, col, cx, cy, value, isClue}]
   selected: null,   // {row, col} or null
-  guessCount: 0,
   solved: false,
   activeDigit: null, // highlighted placeable number (hidden when solved)
   activeDigitFromUser: false, // true = user picked digit on keyboard; empty-cell tap places anywhere
@@ -599,6 +697,7 @@ function cellKey(r, c) { return `${r},${c}` }
 function initPuzzle(idx) {
   const puzzle = PUZZLES[idx]
   const size = puzzle.size
+  setHexGeometry(chooseHexRadius(size))
   const rawCells = buildCells(size)
 
   // Build clue lookup
@@ -612,7 +711,6 @@ function initPuzzle(idx) {
     isClue: !!clueMap[cellKey(row, col)],
   }))
   state.selected   = null
-  state.guessCount = 0
   state.solved     = false
   state.activeDigitFromUser = false
   state.moveHistory = []
@@ -762,13 +860,25 @@ function computeGridOffsets() {
   return { PAD, offX, offY, svgW, svgH }
 }
 
+function reflowGeometryForCurrentState() {
+  const size = currentPuzzle().size
+  setHexGeometry(chooseHexRadius(size))
+  const rebuilt = buildCells(size)
+  const map = new Map(rebuilt.map(c => [`${c.row},${c.col}`, c]))
+  for (const cell of state.cells) {
+    const fresh = map.get(`${cell.row},${cell.col}`)
+    if (!fresh) continue
+    cell.cx = fresh.cx
+    cell.cy = fresh.cy
+  }
+}
+
 // ═══════════════════════════════════════════════════════════
 // RENDER
 // ═══════════════════════════════════════════════════════════
 
 const svg = document.getElementById('hex-grid')
 const keyboard = document.getElementById('keyboard')
-const guessCountEl = document.getElementById('guess-count')
 const diffLabel = document.getElementById('diff-label')
 const puzzleLabel = document.getElementById('puzzle-index-label')
 const btnPrev = document.getElementById('btn-prev')
@@ -1039,7 +1149,7 @@ function renderKeyboard() {
 
   const size = currentPuzzle().size
   let numRows
-  if (size === 'easy') {
+  if (size === 'small') {
     numRows = [
       [1, 2, 3, 4, 5],
       [6, 7, 8, 9, 10],
@@ -1051,10 +1161,13 @@ function renderKeyboard() {
     ]
   } else {
     numRows = [
-      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-      [11, 12, 13, 14, 15, 16, 17, 18, 19],
+      [1, 2, 3, 4, 5, 6, 7],
+      [8, 9, 10, 11, 12, 13],
+      [14, 15, 16, 17, 18, 19],
     ]
   }
+
+  const backspaceRowIdx = size === 'large' ? 2 : 1
 
   for (let ri = 0; ri < numRows.length; ri++) {
     const row = numRows[ri]
@@ -1081,7 +1194,7 @@ function renderKeyboard() {
       rowDiv.appendChild(btn)
     }
 
-    if (ri === 1) {
+    if (ri === backspaceRowIdx) {
       const bs = document.createElement('button')
       bs.type = 'button'
       bs.className = 'kb-key kb-backspace'
@@ -1158,11 +1271,12 @@ function renderKeyboard() {
   if (hasBottom) keyboard.appendChild(bottom)
 }
 
+const DIFF_LABELS = { small: 'Small', medium: 'Medium', large: 'Large' }
+
 function renderMeta() {
   const puzzle = currentPuzzle()
-  diffLabel.textContent = puzzle.size.charAt(0).toUpperCase() + puzzle.size.slice(1)
-  puzzleLabel.textContent = `Puzzle ${state.puzzleIdx + 1} of ${PUZZLES.length}`
-  guessCountEl.textContent = state.guessCount
+  diffLabel.textContent = DIFF_LABELS[puzzle.size] ?? puzzle.size
+  puzzleLabel.textContent = `Puzzle ${state.puzzleIdx + 1}`
   btnPrev.disabled = state.puzzleIdx === 0
   btnNext.disabled = state.puzzleIdx === PUZZLES.length - 1
 }
@@ -1300,7 +1414,6 @@ function handleCheck() {
   pathTraceSession++
   clearPathFadeTimeout()
   clearTraceDomImmediate()
-  state.guessCount++
   state.activeDigit = null
   state.activeDigitFromUser = false
 
@@ -1387,12 +1500,6 @@ btnNext.addEventListener('click', (e) => {
   }
 })
 
-document.getElementById('btn-new').addEventListener('click', (e) => {
-  e.stopPropagation()
-  initPuzzle(state.puzzleIdx)
-  render()
-})
-
 document.getElementById('btn-info').addEventListener('click', () => {
   document.getElementById('overlay').classList.add('open')
 })
@@ -1403,6 +1510,11 @@ document.getElementById('btn-close-modal').addEventListener('click', () => {
 
 document.addEventListener('keydown', handleKeyboard)
 document.addEventListener('click', handleDocumentBackgroundClick)
+window.addEventListener('resize', () => {
+  if (!state.cells.length) return
+  reflowGeometryForCurrentState()
+  render()
+})
 
 // Boot
 initPuzzle(0)
