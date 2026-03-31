@@ -178,6 +178,7 @@
   #hex-trace line {
     will-change: stroke-dashoffset, stroke, opacity;
   }
+  .trace-bee { pointer-events: none; }
 
   /* ── KEYBOARD ── */
   #keyboard {
@@ -235,26 +236,6 @@
   }
   .kb-key.available:hover { background: #374151; }
   .kb-key.kb-active:hover { background: #3a7399; }
-
-  .kb-key.kb-backspace {
-    background: #fff;
-    color: #1a1a2e;
-    border: 2px solid #1a1a2e;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-  .kb-key.kb-backspace i {
-    font-size: 1.1rem;
-    line-height: 1;
-  }
-  .kb-key.kb-backspace:hover {
-    background: #f3f4f6;
-  }
-  .kb-key.kb-backspace:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-    background: #f9fafb;
-  }
 
   /* Undo / Reset row */
   .kb-actions {
@@ -886,6 +867,22 @@ const btnNext = document.getElementById('btn-next')
 
 let pathTraceSession = 0
 let pathFadeTimeout = null
+let beeIdleRaf = null
+let beeIdleToken = 0
+const SVG_NS = 'http://www.w3.org/2000/svg'
+const BEE_FORWARD_OFFSET_DEG = 90
+const BEE_TURN_MS = 90
+const BEE_ART = `
+<polygon points="104.88 34.04 45.12 34.04 15.25 85.78 45.12 137.53 104.88 137.53 134.75 85.78 104.88 34.04"/>
+<g>
+  <rect x="49.35" y="25.83" width="32.86" height="7.04" rx="3.52" ry="3.52" transform="translate(62.83 101.31) rotate(-111.7)"/>
+  <circle cx="59.84" cy="14.43" r="6.73"/>
+  <rect x="67.8" y="25.83" width="32.86" height="7.04" rx="3.52" ry="3.52" transform="translate(25.81 96.75) rotate(-68.3)"/>
+  <circle cx="90.16" cy="14.43" r="6.73"/>
+</g>
+<polygon fill="#f6ae2d" points="100.76 41.16 49.24 41.16 23.47 85.78 49.24 130.41 100.76 130.41 126.53 85.78 100.76 41.16"/>
+<path d="M144.41,85.42c-2.41-4.9-6.32-10.04-11.72-15.45-5.4-5.4-40.08-8.98-40.08-8.98,0,0,1.21,12.23,3.32,23.34h-41.76c2.11-11.12,3.32-23.34,3.32-23.34,0,0-34.68,3.57-40.08,8.98-5.4,5.4-9.31,10.54-11.72,15.45-2.41,4.88-3.38,9.47-2.91,13.74.47,4.27,2.32,8,5.53,11.22,3.21,3.21,6.92,5.06,11.11,5.53,4.2.47,8.78-.49,13.74-2.91.72-.35,1.44-.74,2.17-1.15l5.2,8.91h67.16l5.86-9.61c1.13.69,2.25,1.31,3.37,1.85,4.96,2.42,9.55,3.38,13.74,2.91,4.2-.47,7.91-2.33,11.11-5.53,3.22-3.22,5.06-6.95,5.53-11.22.47-4.27-.5-8.86-2.91-13.74ZM41.97,107.35c2.18-1.73,4.39-3.7,6.64-5.94.73-.72,1.41-2,2.07-3.63h48.73c.65,1.64,1.34,2.91,2.07,3.63,2.25,2.25,4.46,4.22,6.64,5.94H41.97Z"/>
+`
 
 function clearPathFadeTimeout() {
   if (pathFadeTimeout) {
@@ -894,7 +891,16 @@ function clearPathFadeTimeout() {
   }
 }
 
+function stopIdleBeeBuzz() {
+  beeIdleToken++
+  if (beeIdleRaf !== null) {
+    cancelAnimationFrame(beeIdleRaf)
+    beeIdleRaf = null
+  }
+}
+
 function clearTraceDomImmediate() {
+  stopIdleBeeBuzz()
   const g = svg.querySelector('#hex-trace')
   if (!g) return
   g.innerHTML = ''
@@ -903,14 +909,104 @@ function clearTraceDomImmediate() {
   g.style.transition = ''
 }
 
-/** Fade the trace away (user input, or delayed after OK). */
-function fadePathTraceOut() {
+function normalizeAngleDeg(deg) {
+  return ((deg % 360) + 360) % 360
+}
+
+function shortestAngleDeltaDeg(fromDeg, toDeg) {
+  let delta = normalizeAngleDeg(toDeg) - normalizeAngleDeg(fromDeg)
+  if (delta > 180) delta -= 360
+  if (delta < -180) delta += 360
+  return delta
+}
+
+function createBeeSprite(traceG, start, initialHeadingDeg) {
+  const bee = document.createElementNS(SVG_NS, 'g')
+  bee.setAttribute('class', 'trace-bee')
+  bee.innerHTML = BEE_ART
+  const beeSize = Math.max(18, HEX_R * 1.15)
+  const scale = beeSize / 150
+  let angle = initialHeadingDeg + BEE_FORWARD_OFFSET_DEG
+
+  const setPose = (x, y, deg) => {
+    bee.setAttribute(
+      'transform',
+      `translate(${x} ${y}) rotate(${deg}) scale(${scale}) translate(-75 -75)`
+    )
+  }
+
+  traceG.appendChild(bee)
+  setPose(start.x, start.y, angle)
+
+  return {
+    bee,
+    setPose,
+    getAngle: () => angle,
+    setAngle: (deg) => { angle = deg },
+  }
+}
+
+function startIdleBeeBuzz(beeCtl, anchor, session) {
+  stopIdleBeeBuzz()
+  const myToken = ++beeIdleToken
+  const radius = HEX_R * 0.7
+  const speedPxPerSec = HEX_R * 0.32
+
+  let x = anchor.x
+  let y = anchor.y
+  let angle = beeCtl.getAngle()
+  let targetX = x
+  let targetY = y
+  let lastTs = performance.now()
+
+  const pickTarget = () => {
+    targetX = anchor.x + (Math.random() * 2 - 1) * radius
+    targetY = anchor.y + (Math.random() * 2 - 1) * radius
+  }
+  pickTarget()
+
+  const tick = (now) => {
+    if (myToken !== beeIdleToken) return
+    if (session !== pathTraceSession || !beeCtl.bee.isConnected) return
+
+    const dt = Math.min(0.05, (now - lastTs) / 1000)
+    lastTs = now
+
+    const dx = targetX - x
+    const dy = targetY - y
+    const dist = Math.hypot(dx, dy)
+
+    if (dist < 1.5) {
+      pickTarget()
+    } else {
+      const move = Math.min(dist, speedPxPerSec * dt)
+      x += (dx / dist) * move
+      y += (dy / dist) * move
+      const desired = (Math.atan2(dy, dx) * 180) / Math.PI + BEE_FORWARD_OFFSET_DEG
+      const delta = shortestAngleDeltaDeg(angle, desired)
+      angle = normalizeAngleDeg(angle + delta * Math.min(1, dt * 2.8))
+      beeCtl.setPose(x, y, angle)
+      beeCtl.setAngle(angle)
+    }
+
+    beeIdleRaf = requestAnimationFrame(tick)
+  }
+
+  beeIdleRaf = requestAnimationFrame(tick)
+}
+
+function fadeOutAndClearTrace(includeBee) {
   const g = svg.querySelector('#hex-trace')
   if (!g || g.childNodes.length === 0) {
     clearTraceDomImmediate()
     return
   }
   pathTraceSession++
+  stopIdleBeeBuzz()
+  if (!includeBee) {
+    const bee = g.querySelector('.trace-bee')
+    if (bee) bee.remove()
+  }
   g.style.transition = 'opacity 0.45s ease'
   g.style.opacity = '0'
   setTimeout(() => {
@@ -918,15 +1014,33 @@ function fadePathTraceOut() {
   }, 450)
 }
 
-function schedulePathTraceFade() {
+function scheduleLossFade() {
   clearPathFadeTimeout()
   pathFadeTimeout = setTimeout(() => {
     pathFadeTimeout = null
-    fadePathTraceOut()
+    fadeOutAndClearTrace(true)
   }, 2000)
 }
 
-/** Called on any gameplay interaction: fades trace if present. */
+function scheduleWinLineFade() {
+  clearPathFadeTimeout()
+  pathFadeTimeout = setTimeout(() => {
+    pathFadeTimeout = null
+    const g = svg.querySelector('#hex-trace')
+    if (!g || g.childNodes.length === 0) return
+    const strokes = g.querySelectorAll('line, polyline, circle')
+    if (!strokes.length) return
+    for (const node of strokes) {
+      node.style.transition = 'opacity 0.6s ease'
+      node.style.opacity = '0'
+    }
+    setTimeout(() => {
+      for (const node of strokes) node.remove()
+    }, 620)
+  }, 1200)
+}
+
+/** Called on any gameplay interaction: clear active trace and idle bee. */
 function notifyPathTraceUserInput() {
   const g = svg.querySelector('#hex-trace')
   if (!g || g.childNodes.length === 0) {
@@ -934,7 +1048,7 @@ function notifyPathTraceUserInput() {
     return
   }
   clearPathFadeTimeout()
-  fadePathTraceOut()
+  clearTraceDomImmediate()
 }
 
 function runPathTraceAnimation(trace) {
@@ -946,14 +1060,19 @@ function runPathTraceAnimation(trace) {
   const traceG = svg.querySelector('#hex-trace')
   if (!traceG) return
 
+  if (trace.complete && !state.solved) {
+    state.solved = true
+    renderKeyboard()
+  }
+
   traceG.innerHTML = ''
   traceG.classList.remove('trace-pulse-win')
   traceG.style.opacity = '1'
   traceG.style.transition = ''
 
   const { offX, offY } = computeGridOffsets()
-  const drawColor = '#4587ba'
-  const okColor = '#15803d'
+  const drawColor = 'rgba(107, 114, 128, 0.5)'
+  const okColor = '#22c55e'
   const badColor = '#b91c1c'
 
   let strokeDone = false
@@ -961,15 +1080,16 @@ function runPathTraceAnimation(trace) {
     if (session !== pathTraceSession || strokeDone) return
     strokeDone = true
     if (trace.complete) {
-      state.solved = true
-      render()
+      if (lastBeePoint) startIdleBeeBuzz(beeCtl, lastBeePoint, session)
+      scheduleWinLineFade()
+      return
     }
-    schedulePathTraceFade()
+    scheduleLossFade()
   }
 
   const pts = cells.map(c => `${c.cx + offX},${c.cy + offY}`)
 
-  const SEG_MS = 100
+  const SEG_MS = 150
 
   if (pts.length === 1) {
     const c0 = cells[0]
@@ -979,7 +1099,7 @@ function runPathTraceAnimation(trace) {
     dot.setAttribute('r', '5')
     dot.setAttribute('fill', 'none')
     dot.setAttribute('stroke', drawColor)
-    dot.setAttribute('stroke-width', '4')
+    dot.setAttribute('stroke-width', '8')
     traceG.appendChild(dot)
     requestAnimationFrame(() => {
       if (session !== pathTraceSession) return
@@ -1008,6 +1128,34 @@ function runPathTraceAnimation(trace) {
     const [x, y] = s.split(',').map(Number)
     return { x, y }
   }
+  const headingDeg = (a, b) => (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI
+  const start = parsePt(pts[0])
+  const firstTarget = parsePt(pts[1])
+  const beeCtl = createBeeSprite(traceG, start, headingDeg(start, firstTarget))
+  let lastBeePoint = { x: start.x, y: start.y }
+
+  const animateBeeSegment = (a, b) => {
+    const startedAt = performance.now()
+    const startAngle = beeCtl.getAngle()
+    const targetAngle = headingDeg(a, b) + BEE_FORWARD_OFFSET_DEG
+    const delta = shortestAngleDeltaDeg(startAngle, targetAngle)
+
+    const run = (now) => {
+      if (session !== pathTraceSession || !beeCtl.bee.isConnected) return
+      const t = Math.min(1, (now - startedAt) / SEG_MS)
+      const turnT = Math.min(1, (now - startedAt) / BEE_TURN_MS)
+      const easedTurn = 1 - Math.pow(1 - turnT, 3)
+      const angle = normalizeAngleDeg(startAngle + delta * easedTurn)
+      const x = a.x + (b.x - a.x) * t
+      const y = a.y + (b.y - a.y) * t
+      beeCtl.setPose(x, y, angle)
+      beeCtl.setAngle(angle)
+      if (t >= 1) lastBeePoint = { x: b.x, y: b.y }
+      if (t < 1) requestAnimationFrame(run)
+    }
+
+    requestAnimationFrame(run)
+  }
 
   const runSegment = (i) => {
     if (session !== pathTraceSession) return
@@ -1019,13 +1167,16 @@ function runPathTraceAnimation(trace) {
     const b = parsePt(pts[i + 1])
     const segLen = Math.hypot(b.x - a.x, b.y - a.y)
     if (segLen < 0.5) {
+      beeCtl.setPose(b.x, b.y, beeCtl.getAngle())
+      lastBeePoint = { x: b.x, y: b.y }
       runSegment(i + 1)
       return
     }
+    animateBeeSegment(a, b)
 
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line')
+    const line = document.createElementNS(SVG_NS, 'line')
     line.setAttribute('stroke', drawColor)
-    line.setAttribute('stroke-width', '4')
+    line.setAttribute('stroke-width', '8')
     line.setAttribute('stroke-linecap', 'round')
     line.setAttribute('x1', String(a.x))
     line.setAttribute('y1', String(a.y))
@@ -1035,6 +1186,7 @@ function runPathTraceAnimation(trace) {
     line.style.strokeDashoffset = String(segLen)
     line.style.transition = `stroke-dashoffset ${SEG_MS}ms ease-out`
     traceG.appendChild(line)
+    traceG.appendChild(beeCtl.bee)
     lines.push(line)
 
     requestAnimationFrame(() => {
@@ -1167,8 +1319,6 @@ function renderKeyboard() {
     ]
   }
 
-  const backspaceRowIdx = size === 'large' ? 2 : 1
-
   for (let ri = 0; ri < numRows.length; ri++) {
     const row = numRows[ri]
     const rowDiv = document.createElement('div')
@@ -1192,21 +1342,6 @@ function renderKeyboard() {
         btn.addEventListener('pointerup', (e) => { e.stopPropagation(); handleKeyPress(num) })
       }
       rowDiv.appendChild(btn)
-    }
-
-    if (ri === backspaceRowIdx) {
-      const bs = document.createElement('button')
-      bs.type = 'button'
-      bs.className = 'kb-key kb-backspace'
-      bs.title = 'Clear selected hex'
-      bs.setAttribute('aria-label', 'Backspace')
-      bs.disabled = state.solved
-      const icon = document.createElement('i')
-      icon.className = 'fa-solid fa-delete-left'
-      icon.setAttribute('aria-hidden', 'true')
-      bs.appendChild(icon)
-      bs.addEventListener('pointerup', (e) => { e.stopPropagation(); handleBackspace() })
-      rowDiv.appendChild(bs)
     }
 
     keyboard.appendChild(rowDiv)
@@ -1295,46 +1430,20 @@ function handleCellClick(row, col) {
   const cell = state.cells.find(c => c.row === row && c.col === col)
   if (!cell || cell.isClue) return
 
-  if (
-    state.selected &&
-    state.selected.row === row &&
-    state.selected.col === col
-  ) {
+  if (cell.value !== null) {
+    const deletedValue = cell.value
+    pushMoveHistory()
+    cell.value = null
     state.selected = null
-    state.activeDigit = null
-    state.activeDigitFromUser = false
+    state.activeDigit = deletedValue
+    state.activeDigitFromUser = true
     render()
     return
   }
 
-  if (cell.value === null && shouldShowHints() && state.activeDigit !== null) {
-    if (
-      state.activeDigitFromUser ||
-      isObviousContinuation(row, col, state.activeDigit)
-    ) {
-      applyDigitToCell(row, col, state.activeDigit)
-      return
-    }
-    state.activeDigit = null
-    state.activeDigitFromUser = false
-    state.selected = null
-    render()
-    return
+  if (shouldShowHints() && state.activeDigit !== null) {
+    applyDigitToCell(row, col, state.activeDigit)
   }
-
-  // Filled-cell tap: drop pen unless tapping the path predecessor (value === activeDigit − 1), e.g. still next to the 7 you placed while 8 is highlighted
-  const keepPenForPath =
-    state.activeDigit != null &&
-    cell.value != null &&
-    state.activeDigit > 1 &&
-    cell.value === state.activeDigit - 1
-  if (!keepPenForPath) {
-    state.activeDigit = null
-    state.activeDigitFromUser = false
-  }
-
-  state.selected = { row, col }
-  render()
 }
 
 function handleKeyPress(num) {
@@ -1349,17 +1458,7 @@ function handleKeyPress(num) {
       .map(c => c.value)
   )
 
-  if (
-    shouldShowHints() &&
-    state.activeDigit === num &&
-    !playerUsed.has(num)
-  ) {
-    state.activeDigit = null
-    state.activeDigitFromUser = false
-    state.selected = null
-    render()
-    return
-  }
+  if (shouldShowHints() && state.activeDigit === num && !playerUsed.has(num)) return
 
   if (state.selected) {
     const cell = state.cells.find(c => c.row === state.selected.row && c.col === state.selected.col)
@@ -1374,19 +1473,6 @@ function handleKeyPress(num) {
 
   state.activeDigit = num
   state.activeDigitFromUser = true
-  render()
-}
-
-function handleBackspace() {
-  if (!state.selected || state.solved) return
-  notifyPathTraceUserInput()
-  const cell = state.cells.find(c => c.row === state.selected.row && c.col === state.selected.col)
-  if (!cell || cell.isClue) return
-  if (cell.value === null) return
-  pushMoveHistory()
-  cell.value = null
-  state.activeDigitFromUser = false
-  state.activeDigit = computeActiveDigitMinMissing()
   render()
 }
 
@@ -1410,8 +1496,6 @@ function handleCheck() {
   pathTraceSession++
   clearPathFadeTimeout()
   clearTraceDomImmediate()
-  state.activeDigit = null
-  state.activeDigitFromUser = false
 
   const trace = buildPathTrace()
   if (trace.bad === 'duplicate' || trace.bad === 'missing' || trace.cells.length === 0) {
@@ -1441,14 +1525,10 @@ function handleKeyboard(e) {
       e.preventDefault()
       handleKeyPress(10)
     }
-  } else if (key === 'Backspace') {
-    e.preventDefault()
-    handleBackspace()
   } else if (key === 'Escape') {
     notifyPathTraceUserInput()
     state.selected = null
-    state.activeDigit = null
-    state.activeDigitFromUser = false
+    if (state.activeDigit === null) state.activeDigit = computeActiveDigitMinMissing()
     render()
   }
 }
@@ -1467,12 +1547,10 @@ function handleDocumentBackgroundClick(e) {
     if (g && !g.classList.contains('given')) return
   }
 
-  if (state.selected === null && state.activeDigit === null) return
+  if (state.selected === null) return
 
   notifyPathTraceUserInput()
   state.selected = null
-  state.activeDigit = null
-  state.activeDigitFromUser = false
   render()
 }
 
@@ -1506,6 +1584,24 @@ document.getElementById('btn-close-modal').addEventListener('click', () => {
 
 document.addEventListener('keydown', handleKeyboard)
 document.addEventListener('click', handleDocumentBackgroundClick)
+let lastTouchEndTime = 0
+document.addEventListener(
+  'touchend',
+  (e) => {
+    const now = Date.now()
+    const withinDoubleTapWindow = now - lastTouchEndTime <= 300
+    if (
+      withinDoubleTapWindow &&
+      e.target &&
+      e.target.closest &&
+      e.target.closest('button, .kb-key, .nav-btn, #hex-grid')
+    ) {
+      e.preventDefault()
+    }
+    lastTouchEndTime = now
+  },
+  { passive: false }
+)
 window.addEventListener('resize', () => {
   if (!state.cells.length) return
   reflowGeometryForCurrentState()
